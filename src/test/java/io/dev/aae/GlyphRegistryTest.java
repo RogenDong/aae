@@ -451,7 +451,7 @@ class GlyphRegistryTest {
     // ---------- 静态布局 ----------
 
     @Test
-    void planConstructionAllowsRuntimeInstancesToShareStaticCells() {
+    void planConstructionRejectsGlyphsSharingStaticCells() {
         String typeId = uniqueTypeId("static");
         GlyphRegistry.global().register(new GlyphDefinition<Void>(
                 typeId,
@@ -459,28 +459,27 @@ class GlyphRegistryTest {
                 () -> null,
                 (context, state) -> null));
 
-        // fix261004 只在运行期检查实例重叠；计划构造不再把符文、机构、轨道互相排斥。
-        SimulationPlan plan = new SimulationPlan(
+        var failure = assertThrows(IllegalArgumentException.class, () -> new SimulationPlan(
                 List.of(mechanismAt("arm", 1, 0)),
                 List.of(TrackSpec.orthogonal(point(1, 0), point(2, 0))),
                 List.of(), List.of(),
                 List.of(
                         glyph("a", typeId, 0, 0, Direction.EAST),
                         glyph("b", typeId, 1, 0, Direction.EAST)),
-                1);
-        assertEquals(2, plan.glyphs().size());
-        assertEquals(List.of(point(0, 0), point(1, 0), point(1, 0), point(2, 0)),
-                plan.glyphPlaceholderCells());
+                1));
+        assertTrue(failure.getMessage().contains("glyph 'a'"));
+        assertTrue(failure.getMessage().contains("mechanism 'arm'"));
+        assertTrue(failure.getMessage().contains(point(1, 0).toString()));
     }
 
     @Test
-    void inputAndOutputTemplatesMaySitOnGlyphPlaceholders() {
+    void planConstructionRejectsTemplatesOnGlyphPlaceholders() {
         Atom eastBonded = Atom.of((byte) 1).withBond(Direction.EAST, OMBonds.NORMAL.code);
         Atom westBonded = Atom.of((byte) 5).withBond(Direction.WEST, OMBonds.NORMAL.code);
 
         try (var handle = GlyphRegistry.global().register(OMGlyphs.BONDING)) {
-            // 输入模板正好落在 Bonding 符文的两个占位格上——这是唯一的用法。
-            SimulationPlan plan = new SimulationPlan(
+            // 输入、输出模板与符文占位重叠时，在计划构造阶段就拒绝。
+            var failure = assertThrows(IllegalArgumentException.class, () -> new SimulationPlan(
                     List.of(),
                     List.of(),
                     List.of(InputSpec.of(
@@ -492,11 +491,9 @@ class GlyphRegistryTest {
                             new AtomPlacement(point(0, 0), eastBonded),
                             new AtomPlacement(point(1, 0), westBonded))),
                     List.of(OMGlyphs.bondingSpec(0, 0, Direction.EAST)),
-                    1);
-
-            assertTrue(plan.hasGlyphs());
-            // 计划构造期不做运行期判断：模板与占位重叠不再被拒绝。
-            assertEquals(List.of(point(0, 0), point(1, 0)), plan.glyphPlaceholderCells());
+                    1));
+            assertTrue(failure.getMessage().contains("input 'in'"));
+            assertTrue(failure.getMessage().contains("glyph '" + OMGlyphs.BONDING_ID + "'"));
         }
     }
 

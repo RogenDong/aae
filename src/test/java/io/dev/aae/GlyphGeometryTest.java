@@ -1,7 +1,6 @@
 package io.dev.aae;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
@@ -63,35 +62,29 @@ class GlyphGeometryTest {
             assertEquals(localInput, GlyphSpec.toLocal(direction, worldOffset));
             assertEquals(worldOutput, spec.worldPoint(localOutput));
 
-            SimulationPlan plan = plan(spec, List.of(InputSpec.of("in", source, neighbor)));
+            SimulationPlan plan = new SimulationPlan(List.of(), List.of(spec), 1);
             assertEquals(List.of(anchor, worldInput, worldOutput, worldInput.translate(Direction.EAST)), plan.glyphPlaceholderCells());
 
-            OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
+            GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
+                    List.of(InputSpec.of("initial", source, neighbor)), List.of(spec));
             simulator.step();
 
-            assertFalse(simulator.isHalted());
             assertNotNull(simulator.atomAt(worldOutput));
             assertEquals((byte) 2, simulator.atomAt(worldOutput).type());
             // 第二半周期的输出槽已被占用，行为应跳过。
             assertEquals(1, calls.get());
 
-            OrthogonalSimulator missingInput = new OrthogonalSimulator(plan(spec, List.of()));
+            GlyphRuntimeFixture missingInput = new GlyphRuntimeFixture(List.of(), List.of(spec));
             missingInput.step();
-            assertFalse(missingInput.isHalted());
             assertNull(missingInput.atomAt(worldOutput));
             assertEquals(1, calls.get());
 
-            OrthogonalSimulator occupiedOutput = new OrthogonalSimulator(plan(spec,
+            GlyphRuntimeFixture occupiedOutput = new GlyphRuntimeFixture(
                     List.of(InputSpec.of("in", source, neighbor,
-                            new AtomPlacement(worldOutput, Atom.of((byte) 4))))));
+                            new AtomPlacement(worldOutput, Atom.of((byte) 4)))), List.of(spec));
             occupiedOutput.step();
-            assertFalse(occupiedOutput.isHalted());
             assertEquals((byte) 4, occupiedOutput.atomAt(worldOutput).type());
             assertEquals(1, calls.get());
         }
-    }
-
-    private static SimulationPlan plan(GlyphSpec spec, List<InputSpec> inputs) {
-        return new SimulationPlan(List.of(), List.of(), inputs, List.of(), List.of(spec), 1);
     }
 }

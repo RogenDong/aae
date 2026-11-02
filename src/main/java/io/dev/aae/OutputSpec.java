@@ -15,15 +15,10 @@ import java.util.Set;
  * <p>被抓住的分子不会被消费，临时键（{@link Atom#TEMPORARY_BOND}）不参与比较。
  * 模板必须是一个由长期键连通的单个分子，因为分子搜索从锚点出发只沿键扩展。</p>
  */
-public record OutputSpec(String id, List<AtomPlacement> atoms) {
+public final class OutputSpec extends IOSpec {
 
-    public OutputSpec {
-        Objects.requireNonNull(id, "id");
-        if (id.isBlank()) {
-            throw new IllegalArgumentException("id must not be blank");
-        }
-        Objects.requireNonNull(atoms, "atoms");
-        atoms = List.copyOf(atoms);
+    public OutputSpec(String id, List<AtomPlacement> atoms) {
+        super(id, atoms);
         if (atoms.isEmpty()) {
             throw new IllegalArgumentException("output must define at least one atom");
         }
@@ -45,11 +40,6 @@ public record OutputSpec(String id, List<AtomPlacement> atoms) {
     /** 只匹配一个原子的输出。 */
     public static OutputSpec single(String id, GridPoint position, Atom atom) {
         return of(id, new AtomPlacement(position, atom));
-    }
-
-    /** 模板的原子数量。 */
-    public int size() {
-        return atoms.size();
     }
 
     /** 输出匹配时使用的锚点格点，即模板的第一个原子位置。 */

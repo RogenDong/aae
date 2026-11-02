@@ -115,8 +115,8 @@ class MechanismMotionTest {
 
     @Test
     void diagonalTrackTurnsCarryTheGrabbedMoleculeByTheSameOffset() {
-        Atom grabbed = sampleAtom().withBond(Direction.EAST, (byte) 2);
-        Atom attached = blockerAtom().withBond(Direction.WEST, (byte) 2);
+        Atom grabbed = sampleAtom().withBond(Direction.WEST, (byte) 2);
+        Atom attached = blockerAtom().withBond(Direction.EAST, (byte) 2);
         MechanismSpec arm = new MechanismSpec(
                 "arm",
                 new GridPoint(0, 1),
@@ -129,7 +129,7 @@ class MechanismMotionTest {
         InputSpec input = InputSpec.of(
                 "in",
                 new AtomPlacement(new GridPoint(0, 0), grabbed),
-                new AtomPlacement(new GridPoint(1, 0), attached));
+                new AtomPlacement(new GridPoint(-1, 0), attached));
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
                 List.of(arm), List.of(track), List.of(input), List.of(), 1));
         simulator.init();
@@ -138,20 +138,20 @@ class MechanismMotionTest {
 
         assertEquals(new GridPoint(0, -1), simulator.mechanism("arm").position());
         assertEquals(Direction.NORTH, simulator.mechanism("arm").direction());
-        assertEquals((byte) 2, simulator.atomAt(new GridPoint(0, -2)).bondType(Direction.EAST));
-        assertEquals((byte) 2, simulator.atomAt(new GridPoint(1, -2)).bondType(Direction.WEST));
+        assertEquals((byte) 2, simulator.atomAt(new GridPoint(0, -2)).bondType(Direction.WEST));
+        assertEquals((byte) 2, simulator.atomAt(new GridPoint(-1, -2)).bondType(Direction.EAST));
         assertEquals(1, simulator.grabsAt(new GridPoint(0, -2)));
-        assertEquals(1, simulator.grabsAt(new GridPoint(1, -2)));
+        assertEquals(1, simulator.grabsAt(new GridPoint(-1, -2)));
         assertFalse(simulator.isHalted());
     }
 
     @Test
     void overflowingHeldAtomTrackMotionDoesNotPartiallyCommit() {
-        GridPoint base = new GridPoint(Long.MAX_VALUE - 1, 0);
-        GridPoint atomPosition = new GridPoint(Long.MAX_VALUE, 0);
+        GridPoint base = new GridPoint(Long.MAX_VALUE - 1, 1);
+        GridPoint atomPosition = new GridPoint(Long.MAX_VALUE, 1);
         MechanismSpec arm = new MechanismSpec(
                 "arm", base, Direction.EAST, InstructionTape.once("fg"));
-        TrackSpec track = TrackSpec.orthogonal(
+        TrackSpec track = TrackSpec.diagonal(
                 base, new GridPoint(Long.MAX_VALUE, 0));
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
                 List.of(arm),
@@ -300,44 +300,44 @@ class MechanismMotionTest {
     @Test
     void moveAtTrackEndpointLeavesTheCoHolderPositionUntouched() {
         TrackSpec track = TrackSpec.orthogonal(
-                new GridPoint(0, 0), new GridPoint(1, 0));
+                new GridPoint(0, 1), new GridPoint(1, 1));
         MechanismSpec endpoint = new MechanismSpec(
                 "endpoint",
-                new GridPoint(1, 0),
-                Direction.WEST,
+                new GridPoint(1, 1),
+                Direction.NORTH,
                 InstructionTape.once("fg"));
         MechanismSpec moving = new MechanismSpec(
                 "moving",
-                new GridPoint(1, 0),
-                Direction.WEST,
+                new GridPoint(1, 1),
+                Direction.NORTH,
                 InstructionTape.once("ft"));
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
                 List.of(endpoint, moving),
                 List.of(track),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
+                List.of(InputSpec.single("in", new GridPoint(1, 0), sampleAtom())),
                 List.of(),
                 1));
         simulator.init();
-        // 第一个周期：两个机构都在第一半周期抓住 (0,0) 的原子，第二半周期两台机构都不动。
+        // 第一个周期：两个机构都在第一半周期抓住 (1,0) 的原子，第二半周期两台机构都不动。
         simulator.step();
         assertFalse(simulator.isHalted());
         assertEquals(1, simulator.cycle());
-        assertEquals(2, simulator.grabsAt(new GridPoint(0, 0)));
-        assertEquals(new GridPoint(1, 0), simulator.mechanism("endpoint").position());
-        assertEquals(new GridPoint(1, 0), simulator.mechanism("moving").position());
+        assertEquals(2, simulator.grabsAt(new GridPoint(1, 0)));
+        assertEquals(new GridPoint(1, 1), simulator.mechanism("endpoint").position());
+        assertEquals(new GridPoint(1, 1), simulator.mechanism("moving").position());
 
-        // 第二个周期：端点机构在轨道端点上无法继续西移，只能原地不动；另一个机构沿轨道走到 (0,0)
-        // 并触发输入生产，因此 (0,0) 上是一个不被持有的新原子，(1,0) 之外多了一个被持有的原子。
+        // 第二个周期：端点机构无法继续沿 + 方向前进；另一台向西走到 (0,1)。
+        // 输入在 (1,0) 补充生产，被搬运的原子位于 (0,0)。
         simulator.step();
 
         assertFalse(simulator.isHalted());
         assertEquals(2, simulator.cycle());
-        assertEquals(new GridPoint(1, 0), simulator.mechanism("endpoint").position());
-        assertEquals(new GridPoint(0, 0), simulator.mechanism("moving").position());
+        assertEquals(new GridPoint(1, 1), simulator.mechanism("endpoint").position());
+        assertEquals(new GridPoint(0, 1), simulator.mechanism("moving").position());
+        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 0)));
+        assertEquals(0, simulator.grabsAt(new GridPoint(1, 0)));
         assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(0, 0)));
-        assertEquals(0, simulator.grabsAt(new GridPoint(0, 0)));
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(-1, 0)));
-        assertEquals(2, simulator.grabsAt(new GridPoint(-1, 0)));
+        assertEquals(2, simulator.grabsAt(new GridPoint(0, 0)));
     }
 
     @Test

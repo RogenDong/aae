@@ -94,10 +94,6 @@ public final class OrthogonalSimulator {
 
     public OrthogonalSimulator(SimulationPlan plan) {
         this.plan = Objects.requireNonNull(plan, "plan");
-        // TODO 重叠检查
-        // 机械臂重叠检查
-        // 轨道重叠检查
-        // 符文重叠检查
 
         int size = plan.size();
         this.x = new long[size];
@@ -497,15 +493,6 @@ public final class OrthogonalSimulator {
                 + other.describe() + " (from '" + other.mechanismId()
                 + "') and " + intent.describe()
                 + " (from '" + intent.mechanismId() + "')");
-    }
-
-    private void haltForMultiEntityDestinationConflict(GridPoint pos, long entity1) {
-        if (entity1 != 0) {
-            haltWithWarning("entity #" + entity1
-                    + " would move onto cell " + pos);
-        } else {
-            haltWithWarning("multiple entities would move onto cell " + pos);
-        }
     }
 
     private void haltForMultiEntityDestinationConflict(GridPoint pos, long entity1, long entity2) {

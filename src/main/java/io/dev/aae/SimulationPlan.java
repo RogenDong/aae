@@ -58,7 +58,12 @@ public final class SimulationPlan {
         this(mechanisms, List.of(), List.of(), List.of(), glyphs, targetOutputs);
     }
 
-    /** 完整构造器：机构、轨道、输入、输出、符文 */
+    /**
+     * 完整构造器：机构、轨道、输入、输出、符文。建立定义快照后校验静态布局。
+     *
+     * @throws IllegalArgumentException I/O、符文与其他部件占位重叠；机构只计初始基座，
+     *         机构之间、机构与轨道之间的共享占位不在此限制内
+     */
     public SimulationPlan(
             List<MechanismSpec> mechanisms,
             List<TrackSpec> tracks,
@@ -72,16 +77,34 @@ public final class SimulationPlan {
         Objects.requireNonNull(outputs, "outputs");
         Objects.requireNonNull(glyphs, "glyphs");
 
+        // 按部件声明顺序检查实际占位格点；索引只在构造期间使用。
+        Map<GridPoint, String> occupants = new LinkedHashMap<>();
+        for (MechanismSpec mechanism : mechanisms) {
+            occupants.putIfAbsent(mechanism.initialPosition(), "mechanism '" + mechanism.id() + "'");
+        }
+        for (int index = 0; index < tracks.size(); index++) {
+            for (GridPoint point : tracks.get(index).points()) {
+                // 机构可位于轨道上，轨道也可在已由计划校验过的合法端点处相接。
+                occupants.putIfAbsent(point, "track[" + index + "]");
+            }
+        }
+        for (InputSpec input : inputs) {
+            validateIOLayout(occupants, input, "input");
+        }
+        for (OutputSpec output : outputs) {
+            validateIOLayout(occupants, output, "output");
+        }
+
         this.mechanisms = List.copyOf(mechanisms);
         this.indexesById = indexByIds("mechanism", this.mechanisms, MechanismSpec::id);
         this.tracks = List.copyOf(tracks);
         this.trackNetwork = TrackNetwork.from(this.tracks);
 
         this.inputs = List.copyOf(inputs);
-        this.inputIndexesById = indexByIds("input", this.inputs, InputSpec::id);
+        this.inputIndexesById = indexByIds("input", this.inputs, IOSpec::id);
 
         this.outputs = List.copyOf(outputs);
-        this.outputIndexesById = indexByIds("output", this.outputs, OutputSpec::id);
+        this.outputIndexesById = indexByIds("output", this.outputs, IOSpec::id);
 
         this.glyphs = List.copyOf(glyphs);
         indexByIds("glyph", this.glyphs, GlyphSpec::id);
@@ -91,10 +114,29 @@ public final class SimulationPlan {
             this.glyphDefinitions = resolveDefinitions(this.glyphs);
         }
 
+        for (GlyphSpec glyph : this.glyphs) {
+            for (GridPoint offset : glyphDefinition(glyph.typeId()).placeholder()) {
+                claimLayoutCell(occupants, glyph.worldPoint(offset), "glyph '" + glyph.id() + "'");
+            }
+        }
+
         if (targetOutputs < 1) {
             throw new IllegalArgumentException("targetOutputs must be at least 1");
         }
         this.targetOutputs = targetOutputs;
+    }
+
+    private static void validateIOLayout(Map<GridPoint, String> occupants, IOSpec io, String kind) {
+        for (AtomPlacement placement : io.atoms()) {
+            claimLayoutCell(occupants, placement.position(), kind + " '" + io.id() + "'");
+        }
+    }
+
+    private static void claimLayoutCell(Map<GridPoint, String> occupants, GridPoint point, String owner) {
+        String previous = occupants.putIfAbsent(point, owner);
+        if (previous != null) {
+            throw new IllegalArgumentException(owner + " overlaps " + previous + " at " + point);
+        }
     }
 
     /**
