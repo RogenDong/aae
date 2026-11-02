@@ -62,7 +62,7 @@ public final class SimulationPlan {
      * 完整构造器：机构、轨道、输入、输出、符文。建立定义快照后校验静态布局。
      *
      * @throws IllegalArgumentException I/O、符文与其他部件占位重叠；机构只计初始基座，
-     *         机构之间、机构与轨道之间的共享占位不在此限制内
+     *         机构之间不能共享基座格点，但机构可位于轨道上
      */
     public SimulationPlan(
             List<MechanismSpec> mechanisms,
@@ -80,7 +80,7 @@ public final class SimulationPlan {
         // 按部件声明顺序检查实际占位格点；索引只在构造期间使用。
         Map<GridPoint, String> occupants = new LinkedHashMap<>();
         for (MechanismSpec mechanism : mechanisms) {
-            occupants.putIfAbsent(mechanism.initialPosition(), "mechanism '" + mechanism.id() + "'");
+            claimLayoutCell(occupants, mechanism.initialPosition(), "mechanism '" + mechanism.id() + "'");
         }
         for (int index = 0; index < tracks.size(); index++) {
             for (GridPoint point : tracks.get(index).points()) {

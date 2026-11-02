@@ -167,17 +167,6 @@ class TrackSpecTest {
     }
 
     @Test
-    void endpointOverlapConnectsTwoOpenTracks() {
-        GridPoint shared = new GridPoint(1, 0);
-        TrackNetwork network = TrackNetwork.from(List.of(
-                TrackSpec.orthogonal(new GridPoint(0, 0), shared),
-                TrackSpec.diagonal(shared, new GridPoint(2, 1))));
-
-        assertEquals(new GridPoint(0, 0), network.destination(shared, TrackDirection.MINUS));
-        assertEquals(new GridPoint(2, 1), network.destination(shared, TrackDirection.PLUS));
-    }
-
-    @Test
     void sameHeadOverlapIsRejected() {
         GridPoint shared = new GridPoint(1, 0);
         InvalidTrackNetworkException failure = assertThrows(

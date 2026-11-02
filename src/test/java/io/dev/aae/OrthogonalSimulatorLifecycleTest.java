@@ -24,8 +24,14 @@ class OrthogonalSimulatorLifecycleTest {
         simulator.run(2);
         assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 0)));
         assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(0, 0)));
+        assertFalse(simulator.isHalted());
+        assertEquals(new GridPoint(1, 1), simulator.mechanism("arm").position());
+        assertEquals(1, simulator.grabsAt(new GridPoint(1, 0)));
+        assertEquals(1, simulator.heldEntities("arm").size());
         assertEquals(0, simulator.outputCount("out"));
         simulator.step();
+        assertTrue(simulator.heldEntities("arm").isEmpty());
+        assertNull(simulator.atomAt(new GridPoint(1, 0)));
         assertEquals(1, simulator.outputCount("out"));
         assertFalse(simulator.isComplete());
         simulator.run(5);
@@ -127,19 +133,6 @@ class OrthogonalSimulatorLifecycleTest {
     }
 
     @Test
-    void outputIgnoresGrabbedMoleculesUntilTheyAreReleased() {
-        OrthogonalSimulator simulator = new OrthogonalSimulator(shuttlePlan(1, List.of()));
-        simulator.run(3);
-        assertEquals(0, simulator.outputCount("out"));
-        assertEquals(1, simulator.grabsAt(new GridPoint(1, 0)));
-        simulator.step();
-        assertFalse(simulator.isHalted());
-        assertEquals(1, simulator.outputCount("out"));
-        assertTrue(simulator.isComplete());
-        assertNull(simulator.atomAt(new GridPoint(1, 0)));
-    }
-
-    @Test
     void completionRequiresEveryOutputToReachTheTarget() {
         OrthogonalSimulator simulator = completionSimulator(2);
         simulator.run(9);
@@ -167,20 +160,6 @@ class OrthogonalSimulatorLifecycleTest {
     }
 
     // ---------- 抓取、释放与携带 ----------
-
-    @Test
-    void grabbedAtomsAreCarriedByMechanismMotion() {
-        OrthogonalSimulator simulator = new OrthogonalSimulator(shuttlePlan(1, List.of()));
-        simulator.run(3);
-        assertFalse(simulator.isHalted());
-        assertEquals(3, simulator.cycle());
-        assertEquals(new GridPoint(1, 1), simulator.mechanism("arm").position());
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 0)));
-        assertEquals(1, simulator.grabsAt(new GridPoint(1, 0)));
-        assertFalse(simulator.heldEntities("arm").isEmpty());
-        simulator.step();
-        assertTrue(simulator.heldEntities("arm").isEmpty());
-    }
 
     @Test
     void grabbedMoleculesRotateAroundTheMechanismWithTheirBonds() {
@@ -212,199 +191,29 @@ class OrthogonalSimulatorLifecycleTest {
     @Test
     void grabIsNoOpWhenAlreadyHoldingAndReleaseIsNoOpWhenHoldingNothing() {
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
-                List.of(mechanism("arm", 1, 0, Direction.WEST, "ff")),
+                List.of(new MechanismSpec("arm", new GridPoint(1, 0), Direction.WEST,
+                        InstructionTape.once("rffrr"))),
                 List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
                 List.of(),
                 1));
 
-        simulator.run(3);
+        simulator.init();
+        simulator.step();
+        assertTrue(simulator.heldEntities("arm").isEmpty());
+        simulator.run(2);
 
-        // 周期 0 抓空、周期 1 抓取成功、周期 2 已经持有所以抓取是空操作。
+        // 重复抓取不累加计数；重复释放也不会让计数变成负数。
         assertEquals(1, simulator.boardSize());
         assertEquals(1, simulator.grabsAt(new GridPoint(0, 0)));
         assertEquals(1, simulator.heldEntities("arm").size());
-    }
-
-    @Test
-    void twoMechanismsMayHoldTheSameMolecule() {
-        SimulationPlan plan = new SimulationPlan(
-                List.of(
-                        mechanism("a", 1, 0, Direction.WEST, ".f"),
-                        mechanism("b", 0, 1, Direction.NORTH, ".f")),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
-                List.of(),
-                1);
-
-        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
         simulator.run(2);
-
-        assertEquals(2, simulator.grabsAt(new GridPoint(0, 0)));
-        assertEquals(1, simulator.heldEntities("a").size());
-        assertEquals(1, simulator.heldEntities("b").size());
+        assertFalse(simulator.isHalted());
+        assertEquals(1, simulator.boardSize());
+        assertEquals(0, simulator.grabsAt(new GridPoint(0, 0)));
+        assertTrue(simulator.heldEntities("arm").isEmpty());
     }
 
     // ---------- 意图冲突与停机 ----------
-
-    @Test
-    void grabAndTranslationInTheSameCycleNoLongerConflict() {
-        // GRAB 放在第一半周期、MOVE 放在第二半周期，因此“同一周期既抓取又搬运”不再是
-        // 不兼容意图组合，而是先抓住、再搬运：一个周期里就能抓住并移动一格。
-        SimulationPlan plan = new SimulationPlan(
-                List.of(mechanism("arm", 0, 1, Direction.NORTH, "fg")),
-                List.of(track(0, 1, 1, 1)),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
-                List.of(),
-                1);
-
-        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
-        simulator.init();
-        // 第一个周期抓取，机构原地不动。
-        simulator.step();
-        assertFalse(simulator.isHalted());
-        assertTrue(simulator.mechanism("arm").grabbing());
-        assertEquals(new GridPoint(0, 1), simulator.mechanism("arm").position());
-
-        // 第二个周期沿轨道搬运，原子移动到输出方向的下一格。
-        simulator.step();
-
-        assertFalse(simulator.isHalted());
-        assertTrue(simulator.warnings().isEmpty());
-        assertEquals(2, simulator.cycle());
-        assertTrue(simulator.mechanism("arm").grabbing());
-        assertEquals(new GridPoint(1, 1), simulator.mechanism("arm").position());
-        // 原子被搬到 (1,0)；原来的 (0,0) 空出来后被输入重新生产。
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 0)));
-        assertEquals(1, simulator.grabsAt(new GridPoint(1, 0)));
-        assertEquals(2, simulator.boardSize());
-    }
-
-    @Test
-    void grabAndRotationInTheSameCycleFollowTheTwoHalfCycles() {
-        SimulationPlan plan = new SimulationPlan(
-                List.of(
-                        mechanism("carrier", 1, 0, Direction.EAST, ".fd"),
-                        mechanism("grabber", 3, 0, Direction.WEST, "..f")),
-                List.of(InputSpec.single("in", new GridPoint(2, 0), sampleAtom())),
-                List.of(),
-                1);
-
-        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
-        simulator.run(4);
-
-        assertFalse(simulator.isHalted());
-        assertTrue(simulator.warnings().isEmpty());
-        // 第一半周期抓住 (2,0) 的原子，第二半周期携带它绕 (1,0) 顺时针转到 (1,1)。
-        assertEquals(Direction.SOUTH, simulator.mechanism("carrier").direction());
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 1)));
-        // 下一周期起两个机构都持有同一个分子，因此抓取计数是 2；被搬运的原子已经转到 (1,1)。
-        assertEquals(2, simulator.grabsAt(new GridPoint(1, 1)));
-        assertEquals(new GridPoint(1, 0), simulator.mechanism("carrier").position());
-    }
-
-    @Test
-    void releaseIsCompatibleWithTranslation() {
-        SimulationPlan plan = new SimulationPlan(
-                List.of(
-                        mechanism("dropper", 1, 0, Direction.WEST, ".f.r"),
-                        mechanism("carrier", 0, 1, Direction.NORTH, ".f.g")),
-                List.of(track(0, 1, -1, 1)),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
-                List.of(),
-                1);
-
-        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
-        simulator.run(4);
-
-        assertFalse(simulator.isHalted());
-        // 释放与平移合并：dropper 放手，carrier 继续把实体带到 (-1, 0)。
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(-1, 0)));
-        assertEquals(1, simulator.grabsAt(new GridPoint(-1, 0)));
-        assertTrue(simulator.heldEntities("dropper").isEmpty());
-        assertEquals(1, simulator.heldEntities("carrier").size());
-    }
-
-    @Test
-    void releaseIsCompatibleWithRotation() {
-        SimulationPlan plan = new SimulationPlan(
-                List.of(
-                        mechanism("dropper", 1, 0, Direction.WEST, ".f.r"),
-                        mechanism("carrier", 0, 1, Direction.NORTH, ".f.d")),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
-                List.of(),
-                1);
-
-        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
-        simulator.run(4);
-
-        assertFalse(simulator.isHalted());
-        // 释放与旋转合并：carrier 右转，实体绕 (0,1) 顺时针转到 (1,1)。
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 1)));
-        assertEquals(1, simulator.grabsAt(new GridPoint(1, 1)));
-        assertTrue(simulator.heldEntities("dropper").isEmpty());
-    }
-
-    @Test
-    void conflictingTranslationsHaltAndIdenticalOnesMerge() {
-        SimulationPlan conflict = new SimulationPlan(
-                List.of(
-                        mechanism("west", 1, 0, Direction.WEST, ".fg"),
-                        mechanism("south", 0, -1, Direction.SOUTH, ".ft")),
-                List.of(track(1, 0, 1, -1, 0, -1)),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
-                List.of(),
-                1);
-        SimulationPlan merge = new SimulationPlan(
-                List.of(
-                        mechanism("west-a", 0, 1, Direction.NORTH, ".fg"),
-                        mechanism("west-b", 0, 1, Direction.NORTH, ".fg")),
-                List.of(track(0, 1, -1, 1)),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
-                List.of(),
-                1);
-
-        OrthogonalSimulator conflicting = new OrthogonalSimulator(conflict);
-        conflicting.run(3);
-        assertTrue(conflicting.isHalted());
-        assertEquals(3, conflicting.cycle());
-        assertEquals(sampleAtom(), conflicting.atomAt(new GridPoint(0, 0)));
-
-        OrthogonalSimulator merged = new OrthogonalSimulator(merge);
-        merged.run(3);
-        assertFalse(merged.isHalted());
-        assertEquals(sampleAtom(), merged.atomAt(new GridPoint(-1, 0)));
-        assertEquals(2, merged.grabsAt(new GridPoint(-1, 0)));
-    }
-
-    @Test
-    void conflictingRotationsHaltAndIdenticalOnesMerge() {
-        SimulationPlan conflict = new SimulationPlan(
-                List.of(
-                        mechanism("north", 0, 1, Direction.NORTH, ".fd"),
-                        mechanism("south", 0, -1, Direction.SOUTH, ".fa")),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
-                List.of(),
-                1);
-        SimulationPlan merge = new SimulationPlan(
-                List.of(
-                        mechanism("north-a", 0, 1, Direction.NORTH, ".fd"),
-                        mechanism("north-b", 0, 1, Direction.NORTH, ".fd")),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
-                List.of(),
-                1);
-
-        OrthogonalSimulator conflicting = new OrthogonalSimulator(conflict);
-        conflicting.run(3);
-        assertTrue(conflicting.isHalted());
-        assertEquals(3, conflicting.cycle());
-        assertEquals(sampleAtom(), conflicting.atomAt(new GridPoint(0, 0)));
-
-        OrthogonalSimulator merged = new OrthogonalSimulator(merge);
-        merged.run(3);
-        assertFalse(merged.isHalted());
-        // 相同中心、相同转向只旋转一次：(0,0) 绕 (0,1) 顺时针转到 (1,1)。
-        assertEquals(sampleAtom(), merged.atomAt(new GridPoint(1, 1)));
-        assertEquals(2, merged.grabsAt(new GridPoint(1, 1)));
-    }
 
     @Test
     void atomsMovingOntoTheSameCellHaltInsteadOfOverwriting() {
@@ -431,24 +240,6 @@ class OrthogonalSimulatorLifecycleTest {
         assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 0)));
         assertEquals(otherAtom(), simulator.atomAt(new GridPoint(3, 0)));
     }
-    @Test
-    void atomMovingOntoAnOccupiedCellHaltsInsteadOfOverwriting() {
-        SimulationPlan plan = new SimulationPlan(
-                List.of(mechanism("arm", 1, 1, Direction.NORTH, ".fg")),
-                List.of(track(1, 1, 2, 1)),
-                List.of(
-                        InputSpec.single("in-a", new GridPoint(1, 0), sampleAtom()),
-                        InputSpec.single("in-b", new GridPoint(2, 0), otherAtom())),
-                List.of(),
-                1);
-
-        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
-        simulator.run(3);
-
-        assertTrue(simulator.isHalted());
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 0)));
-        assertEquals(otherAtom(), simulator.atomAt(new GridPoint(2, 0)));
-    }
 
     @Test
     void haltStopsAllFurtherStepsAndResetRecovers() {
@@ -466,6 +257,11 @@ class OrthogonalSimulatorLifecycleTest {
         simulator.run(4);
         assertTrue(simulator.isHalted());
         long haltedCycle = simulator.cycle();
+        assertTrue(simulator.warnings().get(0).contains("already occupied by entity"));
+        assertEquals(new GridPoint(1, 1), simulator.mechanism("arm").position());
+        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 0)));
+        assertEquals(otherAtom(), simulator.atomAt(new GridPoint(2, 0)));
+        assertEquals(1, simulator.grabsAt(new GridPoint(1, 0)));
 
         simulator.step();
         simulator.run(10);

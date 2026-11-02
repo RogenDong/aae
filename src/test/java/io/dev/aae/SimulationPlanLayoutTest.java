@@ -95,13 +95,22 @@ class SimulationPlanLayoutTest {
     }
 
     @Test
-    void allowsTrackJunctionsArmBasesOnTracksAndColocatedArmBases() {
+    void allowsTrackJunctionsAndDistinctArmBasesOnTracks() {
         var plan = assertDoesNotThrow(() -> new SimulationPlan(List.of(arm("a", ORIGIN, Direction.EAST, 1),
-                arm("b", ORIGIN, Direction.WEST, 1)), List.of(
+                arm("b", new GridPoint(1, 0), Direction.WEST, 1)), List.of(
                         TrackSpec.orthogonal(new GridPoint(-1, 0), ORIGIN),
                         TrackSpec.orthogonal(ORIGIN, new GridPoint(1, 0)))));
         var simulator = assertDoesNotThrow(() -> new OrthogonalSimulator(plan));
-        assertEquals(2, simulator.snapshot().occupantsAt(ORIGIN).size());
+        assertEquals(ORIGIN, simulator.mechanism("a").position());
+        assertEquals(new GridPoint(1, 0), simulator.mechanism("b").position());
+    }
+
+    @Test
+    void rejectsSharedInitialMechanismBases() {
+        var failure = assertThrows(IllegalArgumentException.class,
+                () -> SimulationPlan.of(arm("first", ORIGIN, Direction.EAST, 1),
+                        arm("second", ORIGIN, Direction.WEST, 2)));
+        assertEquals("mechanism 'second' overlaps mechanism 'first' at " + ORIGIN, failure.getMessage());
     }
 
     @Test
@@ -145,7 +154,7 @@ class SimulationPlanLayoutTest {
                     List.of(InputSpec.single("input", ORIGIN, ATOM)), List.of(),
                     List.of(new GlyphSpec("glyph", type, ORIGIN)), 1);
             String message = assertThrows(IllegalArgumentException.class, construct).getMessage();
-            assertEquals("glyph 'glyph' overlaps mechanism 'first' at " + ORIGIN, message);
+            assertEquals("input 'input' overlaps mechanism 'first' at " + ORIGIN, message);
             assertEquals(message, assertThrows(IllegalArgumentException.class, construct).getMessage());
             assertEquals(0, factories.get());
             assertEquals(0, callbacks.get());

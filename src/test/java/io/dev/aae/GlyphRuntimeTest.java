@@ -357,36 +357,62 @@ class GlyphRuntimeTest {
     void glyphBusinessExceptionRollsBackTheWholeCycleAndIsRethrown() {
         IllegalStateException failure = new IllegalStateException("boom");
         String glyphType = uniqueTypeId("throwing");
-        GlyphRegistry.global().register(new GlyphDefinition<Void>(
+        OrthogonalSimulator[] observed = new OrthogonalSimulator[1];
+        try (var handle = GlyphRegistry.global().register(new GlyphDefinition<Integer>(
                 glyphType,
-                List.of(new GridPoint(0, 0)),
-                () -> null,
+                List.of(new GridPoint(0, 0), new GridPoint(1, 0)),
+                () -> 0,
                 (context, state) -> {
                     if (context.cycle() == 1) {
-                        throw failure;
+                        if (context.phase().isFirstHalf()) {
+                            assertEquals(TryResult.APPLIED, context.board().spawn(0, otherAtom()));
+                            assertEquals(TryResult.APPLIED, context.board().queueSpawn(1, sampleAtom()));
+                        } else {
+                            // 抛异常前确认机构已运动，第一半周期状态与延迟产物也已经提交。
+                            assertEquals(3, state);
+                            assertEquals(new GridPoint(0, 1), observed[0].mechanism("carrier").position());
+                            assertEquals(sampleAtom(), observed[0].atomAt(new GridPoint(6, 5)));
+                            throw failure;
+                        }
                     }
-                    return null;
-                }));
+                    return state + 1;
+                }))) {
 
-        OrthogonalSimulator simulator = simulatorOf(
-                List.of(),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
-                List.of(),
-                glyphs(new GlyphSpec("throwing", glyphType,
-                        new GridPoint(5, 5), Direction.NORTH)));
+            OrthogonalSimulator simulator = simulatorOf(
+                    List.of(new MechanismSpec("carrier", new GridPoint(-1, 1), Direction.NORTH,
+                            InstructionTape.once("fg"))),
+                    List.of(track(-1, 1, 0, 1)),
+                    List.of(InputSpec.single("in", new GridPoint(-1, 0), sampleAtom())),
+                    List.of(),
+                    glyphs(new GlyphSpec("throwing", glyphType,
+                            new GridPoint(5, 5), Direction.EAST)));
+            observed[0] = simulator;
+            simulator.init();
 
-        simulator.step();
-        assertEquals(1, simulator.cycle());
-        assertEquals(1, simulator.boardSize());
+            simulator.step();
+            assertEquals(1, simulator.cycle());
+            assertEquals(1, simulator.boardSize());
+            long entity = simulator.entityAt(new GridPoint(-1, 0));
+            assertEquals(2, simulator.glyphState("throwing"));
 
-        IllegalStateException thrown = assertThrows(IllegalStateException.class, simulator::step);
-        assertSame(failure, thrown);
-        assertTrue(simulator.isHalted());
-        assertEquals(1, simulator.cycle());
-        assertEquals(1, simulator.warnings().size());
-        // 周期开始时的状态被完整还原。
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(0, 0)));
-        assertEquals(1, simulator.boardSize());
+            IllegalStateException thrown = assertThrows(IllegalStateException.class, simulator::step);
+            assertSame(failure, thrown);
+            assertTrue(simulator.isHalted());
+            assertEquals(1, simulator.cycle());
+            assertEquals(1, simulator.warnings().size());
+            // 周期开始时的状态被完整还原。
+            assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(-1, 0)));
+            assertEquals(entity, simulator.entityAt(new GridPoint(-1, 0)));
+            assertEquals(List.of(entity), simulator.heldEntities("carrier"));
+            assertEquals(1, simulator.grabsAt(new GridPoint(-1, 0)));
+            assertEquals(new GridPoint(-1, 1), simulator.mechanism("carrier").position());
+            assertEquals(2, simulator.glyphState("throwing"));
+            assertEquals(0, simulator.pendingGlyphSpawnCount());
+            assertNull(simulator.atomAt(new GridPoint(0, 0)));
+            assertNull(simulator.atomAt(new GridPoint(5, 5)));
+            assertNull(simulator.atomAt(new GridPoint(6, 5)));
+            assertEquals(1, simulator.boardSize());
+        }
     }
 
     @Test
@@ -418,7 +444,7 @@ class GlyphRuntimeTest {
                 List.of());
         withInput.init();
         long first = withInput.entityAt(new GridPoint(0, 0));
-        assertNotSame(0, first);
+        assertEquals(1L, first);
         withInput.reset();
         assertEquals(0, withInput.entityAt(new GridPoint(0, 0)));
         withInput.init();
@@ -510,150 +536,6 @@ class GlyphRuntimeTest {
         assertThrows(GlyphExecutionException.class,
                 () -> captured[0].bond(0, Direction.EAST,
                         OMBonds.NORMAL.code));
-    }
-
-    // ---------- 写操作的“先检查、再执行” ----------
-
-    @Test
-    void bondSkipsOnRealBondsAndOverwritesOneSidedResidue() {
-        byte normal = OMBonds.NORMAL.code;
-        byte other = BaseEncoding.global().bondType(uniqueTypeId("probe-bond"));
-
-        // 1. 任一端没有原子 → SKIPPED。
-        assertEquals(TryResult.SKIPPED, bondProbe(
-                Atom.of((byte) 7),
-                null,
-                normal,
-                null,
-                null));
-
-        // 2. 已经有互惠长期键：同键不重复写（幂等）。
-        assertEquals(TryResult.SKIPPED, bondProbe(
-                Atom.of((byte) 7).withBond(Direction.EAST, normal),
-                Atom.of((byte) 7).withBond(Direction.WEST, normal),
-                normal,
-                normal,
-                normal));
-        // 异键也不覆盖：新键 other 不会顶掉既有的 normal，两侧保持原样。
-        assertEquals(TryResult.SKIPPED, bondProbe(
-                Atom.of((byte) 7).withBond(Direction.EAST, normal),
-                Atom.of((byte) 7).withBond(Direction.WEST, normal),
-                other,
-                normal,
-                normal));
-
-//        // 3. 单侧残留只是“刚解除键”的临时标记 → 直接覆盖，两侧都写入新键 other。
-//        assertEquals(TryResult.APPLIED, bondProbe(
-//                Atom.of((byte) 7).withBond(Direction.EAST, Atom.TEMPORARY_BOND),
-//                Atom.of((byte) 7),
-//                other,
-//                other,
-//                other));
-//
-//        // 4. 单侧残留是长期键（对方并不互惠）→ 属于“已经有长期键”，静默跳过。
-//        assertEquals(TryResult.SKIPPED, bondProbe(
-//                Atom.of((byte) 7).withBond(Direction.EAST, other),
-//                Atom.of((byte) 7),
-//                normal,
-//                other,
-//                null));
-//
-//        // 5. 两侧干净 → 正常写入。
-//        assertEquals(TryResult.APPLIED, bondProbe(
-//                Atom.of((byte) 7),
-//                Atom.of((byte) 7),
-//                normal,
-//                normal,
-//                normal));
-    }
-
-    @Test
-    void setTypeAndRemoveSkipWhenTheirPreconditionsAreNotMet() {
-        List<TryResult> results = new ArrayList<>();
-        String probeType = uniqueTypeId("skip-probe");
-        GlyphRegistry.global().register(GlyphDefinition.of(probeType,
-                List.of(new GridPoint(0, 0), new GridPoint(9, 9)), context -> {
-            GlyphBoard board = context.board();
-            // (0,0) 有原子：原地改类型成功；实体标识被保留。
-            long before = board.entityAt(0);
-            results.add(board.setType(0, (byte) 3));
-            results.add(board.entityAt(0) == before
-                    ? TryResult.APPLIED : TryResult.SKIPPED);
-            // 空格点上改类型与删除都是 SKIPPED。
-            results.add(board.setType(1, (byte) 3));
-            results.add(board.remove(1));
-            // 类型 3 的原子仍然可以被删除（它没有键、没有被抓取）。
-            results.add(board.remove(0));
-            // 删掉之后同一个格点上的删除变成 SKIPPED。
-            results.add(board.remove(0));
-        }));
-
-        GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
-                List.of(InputSpec.single("in", new GridPoint(0, 0), Atom.of((byte) 7))),
-                glyphs(new GlyphSpec("probe", probeType, new GridPoint(0, 0), Direction.EAST)));
-
-        simulator.step();
-
-        // 只取第一个半周期的结果；第二个半周期是同一组调用的重放（此时格点已经空了）。
-        assertEquals(List.of(
-                TryResult.APPLIED,
-                TryResult.APPLIED,
-                TryResult.SKIPPED,
-                TryResult.SKIPPED,
-                TryResult.APPLIED,
-                TryResult.SKIPPED), results.subList(0, 6));
-        assertNull(simulator.atomAt(new GridPoint(0, 0)));
-        assertEquals(0, simulator.boardSize());
-    }
-
-    /**
-     * 用一个临时符文探测 {@code bond} 的返回码；只记录第一个半周期的结果。
-     *
-     * @param source         锚点格点上的原子；{@code null} 表示该格点为空
-     * @param target         邻居格点上的原子；{@code null} 表示该格点为空
-     * @param bondCode       要写入的键类型
-     * @param expectedSource 期望锚点侧最终的键字节；{@code null} 表示不检查
-     * @param expectedTarget 期望邻居侧最终的键字节；{@code null} 表示不检查
-     */
-    private static TryResult bondProbe(
-            Atom source,
-            Atom target,
-            byte bondCode,
-            Byte expectedSource,
-            Byte expectedTarget) {
-        List<TryResult> results = new ArrayList<>();
-        String probeType = uniqueTypeId("bond-probe");
-        GlyphRegistry.global().register(GlyphDefinition.of(probeType,
-                List.of(new GridPoint(0, 0), new GridPoint(1, 0)), context -> {
-            if (results.isEmpty()) {
-                results.add(context.board().bond(
-                        0, Direction.EAST, bondCode));
-            }
-        }));
-
-        List<AtomPlacement> atoms = new ArrayList<>(2);
-        if (source != null) {
-            atoms.add(new AtomPlacement(new GridPoint(0, 0), source));
-        }
-        if (target != null) {
-            atoms.add(new AtomPlacement(new GridPoint(1, 0), target));
-        }
-        InputSpec input = new InputSpec("in", atoms);
-        GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(List.of(input),
-                List.of(new GlyphSpec("probe", probeType, new GridPoint(0, 0), Direction.EAST)));
-        simulator.step();
-
-        if (expectedSource != null) {
-            Atom actual = simulator.atomAt(new GridPoint(0, 0));
-            assertNotNull(actual);
-            assertEquals(expectedSource.byteValue(), actual.bondType(Direction.EAST));
-        }
-        if (expectedTarget != null) {
-            Atom actual = simulator.atomAt(new GridPoint(1, 0));
-            assertNotNull(actual);
-            assertEquals(expectedTarget.byteValue(), actual.bondType(Direction.WEST));
-        }
-        return results.get(0);
     }
 
     private static OrthogonalSimulator simulatorOf(

@@ -62,7 +62,7 @@ class MechanismMotionTest {
     }
 
     @Test
-    void mechanismQueriesSnapshotsAndChecksumsIncludeLength() {
+    void mechanismQueriesAndChecksumsIncludeLength() {
         MechanismSpec extended = new MechanismSpec(
                 "arm",
                 new GridPoint(0, 0),
@@ -75,9 +75,6 @@ class MechanismMotionTest {
 
         assertEquals(2, simulator.mechanism("arm").length());
         assertEquals(2, simulator.mechanisms().get(0).length());
-        assertEquals(
-                2,
-                simulator.snapshot().occupantsAt(new GridPoint(0, 0)).get(0).length());
         assertNotEquals(legacyLength.checksum(), simulator.checksum());
     }
 
@@ -202,7 +199,7 @@ class MechanismMotionTest {
         OrthogonalSimulator simulator = new OrthogonalSimulator(
                 new SimulationPlan(List.of(piston), List.of(input), List.of(), 1));
         simulator.init();
-        // 第一个周期：第一半周期抓住 (1,0) 的原子，第二半周期活塞伸出把它推向 (2,0)。
+        // 第一个周期只执行抓取，活塞长度保持不变。
         simulator.step();
         assertFalse(simulator.isHalted());
         assertEquals(1, simulator.cycle());
@@ -255,116 +252,6 @@ class MechanismMotionTest {
         assertEquals(1, simulator.mechanism("west").length());
         assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 0)));
         assertEquals(2, simulator.grabsAt(new GridPoint(1, 0)));
-    }
-
-    @Test
-    void coHolderStillKeepsItsGripWhileThePistonPushesTheEntityAway() {
-        MechanismSpec piston = new MechanismSpec(
-                "piston",
-                new GridPoint(0, 0),
-                Direction.EAST,
-                1,
-                InstructionTape.once("fw"));
-        MechanismSpec stationary = new MechanismSpec(
-                "stationary",
-                new GridPoint(0, 0),
-                Direction.EAST,
-                1,
-                InstructionTape.once("f."));
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
-                List.of(piston, stationary),
-                List.of(InputSpec.single("in", new GridPoint(1, 0), sampleAtom())),
-                List.of(),
-                1));
-        simulator.init();
-        // 第一个周期：两个机构都在第一半周期抓住 (1,0) 的原子，第二半周期活塞还没伸出。
-        simulator.step();
-        assertFalse(simulator.isHalted());
-        assertEquals(1, simulator.cycle());
-        assertEquals(1, simulator.mechanism("piston").length());
-        assertEquals(2, simulator.grabsAt(new GridPoint(1, 0)));
-
-        // 第二个周期：活塞伸出把原子推到 (2,0)；两个机构都还持有它，因此抓取计数保持 2。
-        simulator.step();
-
-        assertFalse(simulator.isHalted());
-        assertEquals(2, simulator.cycle());
-        assertEquals(2, simulator.mechanism("piston").length());
-        assertEquals(1, simulator.mechanism("stationary").length());
-        assertTrue(simulator.mechanism("piston").grabbing());
-        assertTrue(simulator.mechanism("stationary").grabbing());
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(2, 0)));
-        assertEquals(2, simulator.grabsAt(new GridPoint(2, 0)));
-    }
-
-    @Test
-    void moveAtTrackEndpointLeavesTheCoHolderPositionUntouched() {
-        TrackSpec track = TrackSpec.orthogonal(
-                new GridPoint(0, 1), new GridPoint(1, 1));
-        MechanismSpec endpoint = new MechanismSpec(
-                "endpoint",
-                new GridPoint(1, 1),
-                Direction.NORTH,
-                InstructionTape.once("fg"));
-        MechanismSpec moving = new MechanismSpec(
-                "moving",
-                new GridPoint(1, 1),
-                Direction.NORTH,
-                InstructionTape.once("ft"));
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
-                List.of(endpoint, moving),
-                List.of(track),
-                List.of(InputSpec.single("in", new GridPoint(1, 0), sampleAtom())),
-                List.of(),
-                1));
-        simulator.init();
-        // 第一个周期：两个机构都在第一半周期抓住 (1,0) 的原子，第二半周期两台机构都不动。
-        simulator.step();
-        assertFalse(simulator.isHalted());
-        assertEquals(1, simulator.cycle());
-        assertEquals(2, simulator.grabsAt(new GridPoint(1, 0)));
-        assertEquals(new GridPoint(1, 1), simulator.mechanism("endpoint").position());
-        assertEquals(new GridPoint(1, 1), simulator.mechanism("moving").position());
-
-        // 第二个周期：端点机构无法继续沿 + 方向前进；另一台向西走到 (0,1)。
-        // 输入在 (1,0) 补充生产，被搬运的原子位于 (0,0)。
-        simulator.step();
-
-        assertFalse(simulator.isHalted());
-        assertEquals(2, simulator.cycle());
-        assertEquals(new GridPoint(1, 1), simulator.mechanism("endpoint").position());
-        assertEquals(new GridPoint(0, 1), simulator.mechanism("moving").position());
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 0)));
-        assertEquals(0, simulator.grabsAt(new GridPoint(1, 0)));
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(0, 0)));
-        assertEquals(2, simulator.grabsAt(new GridPoint(0, 0)));
-    }
-
-    @Test
-    void anotherMechanismCanGrabAnEntityHeldStill() {
-        MechanismSpec holder = new MechanismSpec(
-                "holder",
-                new GridPoint(0, 0),
-                Direction.EAST,
-                InstructionTape.once("f."));
-        MechanismSpec joiner = new MechanismSpec(
-                "joiner",
-                new GridPoint(0, 0),
-                Direction.EAST,
-                InstructionTape.once(".f"));
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
-                List.of(holder, joiner),
-                List.of(InputSpec.single("in", new GridPoint(1, 0), sampleAtom())),
-                List.of(),
-                1));
-        simulator.init();
-
-        simulator.run(2);
-
-        assertFalse(simulator.isHalted());
-        assertEquals(2, simulator.grabsAt(new GridPoint(1, 0)));
-        assertEquals(1, simulator.heldEntities("holder").size());
-        assertEquals(1, simulator.heldEntities("joiner").size());
     }
 
     @Test

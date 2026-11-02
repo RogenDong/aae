@@ -22,14 +22,18 @@ class SimulationPlanTest {
     @Test
     void inputAndOutputIdsMustBeUniqueWithinTheirKinds() {
         InputSpec input = InputSpec.single("same", new GridPoint(0, 0), sampleAtom());
-        assertThrows(
+        var inputFailure = assertThrows(
                 IllegalArgumentException.class,
-                () -> new SimulationPlan(List.of(), List.of(input, input), List.of(), 1));
+                () -> new SimulationPlan(List.of(), List.of(input,
+                        InputSpec.single("same", new GridPoint(1, 0), sampleAtom())), List.of(), 1));
+        assertEquals("duplicate input id: same", inputFailure.getMessage());
 
         OutputSpec output = OutputSpec.single("same", new GridPoint(0, 0), sampleAtom());
-        assertThrows(
+        var outputFailure = assertThrows(
                 IllegalArgumentException.class,
-                () -> new SimulationPlan(List.of(), List.of(), List.of(output, output), 1));
+                () -> new SimulationPlan(List.of(), List.of(), List.of(output,
+                        OutputSpec.single("same", new GridPoint(1, 0), sampleAtom())), 1));
+        assertEquals("duplicate output id: same", outputFailure.getMessage());
     }
 
     @Test

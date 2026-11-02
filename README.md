@@ -1,6 +1,6 @@
 # Automata Assembly Engine
 
-这是一个参考 `omsim` 与 `omclone` 分层思路实现的 Java 仿真器基线。它使用无限方格、东南西北四种机构朝向、正交/对角轨道和按周期读取的指令带；运行期只检查周期结束后的分子重叠与分子/机构基座重叠，不执行变换过程中的实时碰撞采样。
+这是一个参考 `omsim` 与 `omclone` 分层思路实现的 Java 仿真器基线。它使用无限方格、东南西北四种机构朝向、正交/对角轨道和按周期读取的指令带；运行期检查周期结束后的分子重叠、分子/机构基座重叠与机构基座之间的重叠，不执行变换过程中的实时碰撞采样。
 
 当前版本聚焦最小但可执行的核心：多个机构可沿显式轨道移动、绕基座或抓握点旋转、伸缩、等待；轨道由有序格点定义，分别只允许正交单位步或对角单位步；原子网格按字节保存原子类型与四方向键类型（编码由调用方定义）并提供分子连通分量搜索；输入在每个周期末尾生产模板分子，输出消费类型、键与形状完全一致的未抓取分子并驱动完成条件；指令带支持抓取与释放，同一实体收到不兼容意图时模拟器停机并警告。它不是对《Opus Magnum》全部符文、导管和碰撞协议的移植；这些游戏专用能力被留在扩展边界之外。
 
@@ -12,9 +12,9 @@
 - `TrackType` 区分 `ORTHOGONAL` 与 `DIAGONAL`；同一条轨道不能混用两类单位步。不同轨道可以在合法的开放端点处衔接；闭环重叠、三轨重叠和非端点重叠会在计划构造时拒绝。
 - `MOVE_FORWARD`/`MOVE_BACKWARD` 分别沿轨道有序点列的 `+`/`-` 方向移动，与机构朝向无关；开放端点和非轨道格点都保持原地。
 - `OrthogonalSimulator` 保存可变运行态，并按 decode → intent → conflict → transform → commit → produce → consume 推进每个周期。
-- `SimulationPlan` 构造时校验静态布局：I/O 模板不能与任何其他 I/O、机构初始基座、轨道节点或符文占位重叠；符文不能与其他符文、机构初始基座或轨道节点重叠。机构可以位于轨道上，臂杆和抓握点不计入静态占位。
-- 推进热路径不采样变换过程；每周期第二半周期结束时检查最终的分子/分子与分子/机构基座重叠，冲突会回滚并停机。
-- `GridSnapshot` 只在调用方需要观察网格时创建，并用 `位置 -> 机构列表` 保留同格的所有机构。
+- `SimulationPlan` 构造时校验静态布局：I/O 模板不能与任何其他 I/O、机构初始基座、轨道节点或符文占位重叠；符文不能与其他符文、机构初始基座或轨道节点重叠。机构之间不能共享初始基座格点；机构可以位于轨道上，臂杆和抓握点不计入静态占位。
+- 推进热路径不采样变换过程；每周期第二半周期结束时检查最终的分子/分子、分子/机构基座和机构基座之间的重叠，冲突会回滚并停机。两个机构可以在同一周期交换基座位置，只要最终格点不同。
+- `mechanism(id)` 和 `mechanisms()` 提供机构的只读状态值，包含基座位置、朝向、长度和抓取状态。
 - 原子类型与化学键类型都是 `byte` 且由调用方定义编码：项目只比较数值、不认识类型名称，内部只依赖两条约定——键字节 `0` 表示无键、`0xFF` 表示本周期临时键。`Atom` 由一个类型字节加四个方向的键字节组成，是不可变值对象。
 - `AtomGrid` 是 `GridPoint -> Atom` 的稀疏映射，成键时两端互惠写入；单侧键不构成连通。
 - `MoleculeBfs` 用显式队列做广度优先搜索，返回不可变的 `Molecule`；搜索过程不改动网格，也不使用递归。
@@ -92,27 +92,28 @@ SimulationPlan plan = SimulationPlan.withTracks(
         "left",
         new GridPoint(0, 0),
         Direction.EAST,
-        InstructionTape.looping("t")),
+        InstructionTape.looping("g")),
     new MechanismSpec(
         "right",
         new GridPoint(2, 0),
         Direction.WEST,
-        InstructionTape.looping("g")));
+        InstructionTape.looping("t")));
 
 OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
 simulator.step();
 
-List<MechanismView> occupants =
-    simulator.snapshot().occupantsAt(new GridPoint(1, 0));
-// occupants.size() == 2
+// 两个机构都试图移动到 (1,0)，冲突周期回滚并停机。
+// simulator.isHalted() == true
+// simulator.mechanism("left").position().equals(new GridPoint(0, 0))
+// simulator.mechanism("right").position().equals(new GridPoint(2, 0))
 ```
 
 指令带字符：
 
 | 字符 | 指令 |
 |---|---|
-| `t` | 沿所在轨道的 `+` 方向移动一步 |
-| `g` | 沿所在轨道的 `-` 方向移动一步 |
+| `g` | 沿所在轨道的 `+` 方向移动一步 |
+| `t` | 沿所在轨道的 `-` 方向移动一步 |
 | `q` | 将抓住的分子绕抓握点逆时针旋转 90 度 |
 | `e` | 将抓住的分子绕抓握点顺时针旋转 90 度 |
 | `a` | 绕机构基座逆时针旋转 90 度 |

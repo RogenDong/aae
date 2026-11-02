@@ -347,10 +347,6 @@ public final class OrthogonalSimulator {
         return views;
     }
 
-    public GridSnapshot snapshot() {
-        return GridSnapshot.from(cycle, mechanisms());
-    }
-
     /** 计划里的符文声明，按声明顺序。 */
     public List<GlyphSpec> glyphSpecs() {
         return glyphs.specs();
@@ -558,13 +554,6 @@ public final class OrthogonalSimulator {
             return;
         }
 
-        switch (instruction) {
-            case GRAB, RELEASE, WAIT -> {
-                // 抓取与释放在第一半周期执行；等待不改变任何实体。
-                return;
-            }
-        }
-
         // 未抓握实体则无需收集意图
         if (held.isEmpty()) {
             return;
@@ -588,12 +577,13 @@ public final class OrthogonalSimulator {
             }
         }
 
+        int firstIntent = intents.size();
         switch (instruction) {
             case MOVE_FORWARD, MOVE_BACKWARD -> {
                 long deltaX = pendingTrackDeltaX[mechIndex];
                 long deltaY = pendingTrackDeltaY[mechIndex];
                 if (deltaX == 0 && deltaY == 0) {
-                    return;
+                    break;
                 }
                 for (long entity : entities) {
                     intents.add(EntityIntent.move(entity, mid, deltaX, deltaY));
@@ -625,7 +615,7 @@ public final class OrthogonalSimulator {
             }
             case EXTEND_PISTON -> {
                 if (length[mechIndex] >= MechanismSpec.MAX_LENGTH) {
-                    return;
+                    break;
                 }
                 for (long entity : entities) {
                     intents.add(EntityIntent.move(
@@ -634,12 +624,21 @@ public final class OrthogonalSimulator {
             }
             case RETRACT_PISTON -> {
                 if (length[mechIndex] <= MechanismSpec.MIN_LENGTH) {
-                    return;
+                    break;
                 }
                 for (long entity : entities) {
                     intents.add(EntityIntent.move(
                             entity, mid, -facing.deltaX(), -facing.deltaY()));
                 }
+            }
+            case GRAB, RELEASE, WAIT -> {
+                // 抓取与释放已经在第一半周期执行。
+            }
+        }
+        if (intents.size() == firstIntent) {
+            // 等待、重复抓取、轨道端点和活塞边界都必须保留静止持有约束。
+            for (long entity : entities) {
+                intents.add(EntityIntent.stay(entity, mid));
             }
         }
     }
@@ -833,7 +832,7 @@ public final class OrthogonalSimulator {
      * 变换提交前检查变换后的原子位置与机构基座。
      *
      * <p>棋盘本身是一格一个原子的稀疏映射，因此这里把“分子与分子重叠”落实为
-     * 变换结果中不能出现两个实体占据同一格；机构基座与任一结果原子重叠同样停机。</p>
+     * 变换结果中不能出现两个实体占据同一格；机构基座之间、基座与任一结果原子重叠同样停机。</p>
      */
     private boolean checkRuntimeOverlaps(List<AtomChange> changes) {
         Map<Long, AtomChange> changesByEntity = new LinkedHashMap<>();
@@ -850,8 +849,7 @@ public final class OrthogonalSimulator {
         List<MechanismSpec> mechanisms = plan.mechanisms();
         for (int i = 0; i < mechanismCount(); i++) {
             // checking mechanism overlap
-            for (int j = 0; j < mechanismCount(); j++) {
-                if (i == j) continue;
+            for (int j = i + 1; j < mechanismCount(); j++) {
                 if (nextX[i] == nextX[j] && nextY[i] == nextY[j]) {
                     haltForMechanismConflict(
                             mechanisms.get(i).id(),

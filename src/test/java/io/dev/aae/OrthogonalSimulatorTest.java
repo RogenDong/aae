@@ -1,6 +1,7 @@
 package io.dev.aae;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.ArrayList;
@@ -9,6 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 class OrthogonalSimulatorTest {
 
@@ -77,23 +80,26 @@ class OrthogonalSimulatorTest {
         assertEquals(new GridPoint(0, 0), simulator.mechanism("arm").position());
     }
 
-    @Test
-    void colocatedMechanismsArePreservedInsteadOfOverwritten() {
+    @ParameterizedTest
+    @CsvSource({"2,t", "1,."})
+    void overlappingMechanismDestinationsHaltAndRollBack(long rightX, String rightProgram) {
         TrackSpec track = TrackSpec.orthogonal(
                 new GridPoint(0, 0), new GridPoint(1, 0), new GridPoint(2, 0));
         OrthogonalSimulator simulator = simulator(
                 List.of(track),
                 mechanism("left", 0, 0, Direction.NORTH, "g"),
-                mechanism("right", 2, 0, Direction.SOUTH, "t"));
+                mechanism("right", rightX, 0, Direction.SOUTH, rightProgram));
 
         simulator.step();
 
-        GridSnapshot snapshot = simulator.snapshot();
-        List<MechanismView> occupants = snapshot.occupantsAt(new GridPoint(1, 0));
-        assertEquals(2, occupants.size());
-        assertEquals(List.of("left", "right"), occupants.stream().map(MechanismView::id).toList());
-        assertEquals(1, snapshot.occupiedCellCount());
-        assertEquals(2, snapshot.mechanismCount());
+        assertTrue(simulator.isHalted());
+        assertEquals(1, simulator.cycle());
+        assertEquals(1, simulator.warnings().size());
+        assertTrue(simulator.warnings().get(0).contains("mechanism left conflicts with mechanism right at (1,0)"));
+        assertEquals(new GridPoint(0, 0), simulator.mechanism("left").position());
+        assertEquals(new GridPoint(rightX, 0), simulator.mechanism("right").position());
+        assertEquals(List.of(simulator.mechanism("left"), simulator.mechanism("right")),
+                simulator.mechanisms());
     }
 
     @Test

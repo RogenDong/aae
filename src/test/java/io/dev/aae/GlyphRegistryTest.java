@@ -36,7 +36,6 @@ class GlyphRegistryTest {
     @Test
     void globalRegistryIsASingleProcessWideInstance() {
         assertSame(GlyphRegistry.global(), GlyphRegistry.global());
-        assertSame(GlyphRegistry.global(), GlyphRegistry.global());
     }
 
     @Test
@@ -448,55 +447,6 @@ class GlyphRegistryTest {
         assertFalse(Atom.isRealBond(Atom.TEMPORARY_BOND));
     }
 
-    // ---------- 静态布局 ----------
-
-    @Test
-    void planConstructionRejectsGlyphsSharingStaticCells() {
-        String typeId = uniqueTypeId("static");
-        GlyphRegistry.global().register(new GlyphDefinition<Void>(
-                typeId,
-                List.of(point(0, 0), point(1, 0)),
-                () -> null,
-                (context, state) -> null));
-
-        var failure = assertThrows(IllegalArgumentException.class, () -> new SimulationPlan(
-                List.of(mechanismAt("arm", 1, 0)),
-                List.of(TrackSpec.orthogonal(point(1, 0), point(2, 0))),
-                List.of(), List.of(),
-                List.of(
-                        glyph("a", typeId, 0, 0, Direction.EAST),
-                        glyph("b", typeId, 1, 0, Direction.EAST)),
-                1));
-        assertTrue(failure.getMessage().contains("glyph 'a'"));
-        assertTrue(failure.getMessage().contains("mechanism 'arm'"));
-        assertTrue(failure.getMessage().contains(point(1, 0).toString()));
-    }
-
-    @Test
-    void planConstructionRejectsTemplatesOnGlyphPlaceholders() {
-        Atom eastBonded = Atom.of((byte) 1).withBond(Direction.EAST, OMBonds.NORMAL.code);
-        Atom westBonded = Atom.of((byte) 5).withBond(Direction.WEST, OMBonds.NORMAL.code);
-
-        try (var handle = GlyphRegistry.global().register(OMGlyphs.BONDING)) {
-            // 输入、输出模板与符文占位重叠时，在计划构造阶段就拒绝。
-            var failure = assertThrows(IllegalArgumentException.class, () -> new SimulationPlan(
-                    List.of(),
-                    List.of(),
-                    List.of(InputSpec.of(
-                            "in",
-                            new AtomPlacement(point(0, 0), eastBonded),
-                            new AtomPlacement(point(1, 0), westBonded))),
-                    List.of(OutputSpec.of(
-                            "out",
-                            new AtomPlacement(point(0, 0), eastBonded),
-                            new AtomPlacement(point(1, 0), westBonded))),
-                    List.of(OMGlyphs.bondingSpec(0, 0, Direction.EAST)),
-                    1));
-            assertTrue(failure.getMessage().contains("input 'in'"));
-            assertTrue(failure.getMessage().contains("glyph '" + OMGlyphs.BONDING_ID + "'"));
-        }
-    }
-
     @Test
     void planSnapshotsOnlyTheTypesItDeclaresAndStaysClosed() {
         String kept = uniqueTypeId("closure-kept");
@@ -565,11 +515,6 @@ class GlyphRegistryTest {
 
     static GlyphDefinition<Void> noopDefinition(String typeId) {
         return GlyphDefinition.single(typeId, context -> { });
-    }
-
-    static MechanismSpec mechanismAt(String id, long x, long y) {
-        return new MechanismSpec(
-                id, point(x, y), Direction.NORTH, InstructionTape.empty());
     }
 
     static GridPoint point(long x, long y) {

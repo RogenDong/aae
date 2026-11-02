@@ -35,7 +35,7 @@ class EntityIntentTest {
     }
 
     @Test
-    void multipleGrabsAndGrabReleasePairsNetOut() {
+    void grabsAreCompatibleWithOtherGrabsAndReleases() {
         EntityIntent grab = EntityIntent.grab(ENTITY, "a");
 
         assertTrue(grab.compatibleWith(EntityIntent.grab(ENTITY, "b")));
@@ -81,7 +81,7 @@ class EntityIntentTest {
     }
 
     @Test
-    void factoriesRejectMixedPayloadsAndEntityIdsMustBePositive() {
+    void constructorRejectsMixedPayloadsAndMissingRotationCenters() {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new EntityIntent(

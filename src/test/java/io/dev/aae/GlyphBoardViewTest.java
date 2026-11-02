@@ -5,6 +5,9 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class GlyphBoardViewTest {
     private static final GridPoint ORIGIN = new GridPoint(0, 0);
@@ -82,6 +85,7 @@ class GlyphBoardViewTest {
     @Test
     void removalChecksGrabsHoldersAndEveryBondAndCleansIndices() {
         bind(List.of(ORIGIN));
+        assertEquals(TryResult.SKIPPED, view.setType(0, (byte) 2));
         assertEquals(TryResult.SKIPPED, view.remove(0));
         assertEquals(TryResult.APPLIED, view.spawn(0, Atom.of((byte) 1)));
         long id = view.entityAt(0);
@@ -105,6 +109,7 @@ class GlyphBoardViewTest {
         GridPoint outside = ORIGIN.translate(Direction.NORTH);
         grid.put(outside, Atom.of((byte) 4).withBond(Direction.SOUTH, (byte) 1));
         assertEquals(TryResult.APPLIED, view.remove(0));
+        assertEquals(TryResult.SKIPPED, view.remove(0));
         assertEquals(0L, view.entityAt(0));
         assertFalse(entities.containsKey(ORIGIN));
         assertFalse(positions.containsKey(id));
@@ -112,5 +117,37 @@ class GlyphBoardViewTest {
         assertEquals((byte) 0, grid.get(outside).bondType(Direction.SOUTH));
         assertEquals(TryResult.APPLIED, view.spawn(0, Atom.of((byte) 5)));
         assertNotEquals(id, view.entityAt(0));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0,0,APPLIED", "1,1,SKIPPED", "2,2,SKIPPED", "1,0,SKIPPED",
+            "0,1,SKIPPED", "255,0,APPLIED", "0,255,APPLIED", "255,255,APPLIED"})
+    void bondingPreservesRealMarksAndReplacesTemporaryMarks(int sourceCode, int targetCode, TryResult expected) {
+        GridPoint east = ORIGIN.translate(Direction.EAST);
+        bind(List.of(ORIGIN, east));
+        // 直接测试半周期视图，避免 beginCycle 提前清除待覆盖的临时键。
+        grid.put(ORIGIN, Atom.of((byte) 3).withBond(Direction.EAST, (byte) sourceCode));
+        grid.put(east, Atom.of((byte) 4).withBond(Direction.WEST, (byte) targetCode));
+
+        assertEquals(expected, view.bond(0, Direction.EAST, (byte) 2));
+
+        assertEquals((byte) (expected == TryResult.APPLIED ? 2 : sourceCode),
+                grid.get(ORIGIN).bondType(Direction.EAST));
+        assertEquals((byte) (expected == TryResult.APPLIED ? 2 : targetCode),
+                grid.get(east).bondType(Direction.WEST));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1})
+    void bondingWithEitherAtomMissingLeavesTheOtherAtomUntouched(int occupiedIndex) {
+        bind(List.of(ORIGIN, ORIGIN.translate(Direction.EAST)));
+        Atom atom = Atom.of((byte) 3);
+        view.spawn(occupiedIndex, atom);
+
+        assertEquals(TryResult.SKIPPED, view.bond(0, Direction.EAST, (byte) 2));
+
+        assertEquals(atom, view.atomAt(occupiedIndex).orElseThrow());
+        assertTrue(view.atomAt(1 - occupiedIndex).isEmpty());
+        assertEquals(1, grid.size());
     }
 }
