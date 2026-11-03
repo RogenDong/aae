@@ -17,8 +17,8 @@ import java.util.Set;
  */
 public final class OutputSpec extends IOSpec {
 
-    public OutputSpec(String id, List<AtomPlacement> atoms) {
-        super(id, atoms);
+    public OutputSpec(List<AtomPlacement> atoms) {
+        super(atoms);
         if (atoms.isEmpty()) {
             throw new IllegalArgumentException("output must define at least one atom");
         }
@@ -33,13 +33,13 @@ public final class OutputSpec extends IOSpec {
     }
 
     /** 由若干原子模板建立输出。 */
-    public static OutputSpec of(String id, AtomPlacement... atoms) {
-        return new OutputSpec(id, List.of(atoms));
+    public static OutputSpec of(AtomPlacement... atoms) {
+        return new OutputSpec(List.of(atoms));
     }
 
     /** 只匹配一个原子的输出。 */
-    public static OutputSpec single(String id, GridPoint position, Atom atom) {
-        return of(id, new AtomPlacement(position, atom));
+    public static OutputSpec single(GridPoint position, Atom atom) {
+        return of(new AtomPlacement(position, atom));
     }
 
     /** 输出匹配时使用的锚点格点，即模板的第一个原子位置。 */

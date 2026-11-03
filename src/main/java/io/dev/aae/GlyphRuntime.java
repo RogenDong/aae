@@ -40,7 +40,6 @@ final class GlyphRuntime {
     /** 每个符文实例的当前状态会在运行中被替换，因此这里必须持有可变列表。 */
     private final List<GlyphInstance<?>> instances;
 
-    private final Map<String, Integer> indexById;
     private final GlyphContextImpl context;
 
     /** 当前半周期的符文棋盘视图；只在对应半周期的符文阶段内有效。 */
@@ -50,7 +49,7 @@ final class GlyphRuntime {
     private List<GlyphBoardView.PendingSpawn> pendingSpawns = List.of();
 
     /** 本周期已经因输出格被占用而跳过的符文。 */
-    private final Set<String> skippedForCycle = new LinkedHashSet<>();
+    private final boolean[] skippedForCycle;
 
     /**
      * 本半周期刚刚落盘的延迟产物格点。
@@ -76,7 +75,7 @@ final class GlyphRuntime {
         this.heldEntities = Objects.requireNonNull(heldEntities, "heldEntities");
         this.nextEntityIdSupplier = Objects.requireNonNull(nextEntityIdSupplier, "nextEntityIdSupplier");
         this.instances = new ArrayList<>(createInstances(plan));
-        this.indexById = indexById(this.instances);
+        this.skippedForCycle = new boolean[instances.size()];
         this.boardView = createBoardView();
         this.context = new GlyphContextImpl(0, GlyphPhase.FIRST_HALF);
     }
@@ -92,7 +91,7 @@ final class GlyphRuntime {
         clearTemporaryBonds();
         // 延迟产物不能跨整数周期；这是异常或回滚后的防御性边界。
         pendingSpawns = EMPTY_PENDING_SPAWNS;
-        skippedForCycle.clear();
+        Arrays.fill(skippedForCycle, false);
     }
 
     /** 计划里的符文数量。 */
@@ -109,13 +108,9 @@ final class GlyphRuntime {
         return specs;
     }
 
-    /** 指定符文当前的实例状态；没有该符文时抛出 {@link IllegalArgumentException}。 */
-    Object state(String glyphId) {
-        Integer index = indexById.get(Objects.requireNonNull(glyphId, "glyphId"));
-        if (index == null) {
-            throw new IllegalArgumentException("unknown glyph id: " + glyphId);
-        }
-        return instances.get(index).state();
+    /** 按计划声明下标读取实例状态；越界抛出 {@link IndexOutOfBoundsException}。 */
+    Object state(int glyphIndex) {
+        return instances.get(Objects.checkIndex(glyphIndex, instances.size())).state();
     }
 
     /**
@@ -129,7 +124,7 @@ final class GlyphRuntime {
                             newState(instance.definition())));
         }
         pendingSpawns = EMPTY_PENDING_SPAWNS;
-        skippedForCycle.clear();
+        Arrays.fill(skippedForCycle, false);
         justClaimedCells = Set.of();
         boardView.invalidate();
         boardView = createBoardView();
@@ -265,7 +260,7 @@ final class GlyphRuntime {
     void rewindAfterRollback() {
         pendingSpawns = EMPTY_PENDING_SPAWNS;
         justClaimedCells = Set.of();
-        skippedForCycle.clear();
+        Arrays.fill(skippedForCycle, false);
         boardView.invalidate();
         boardView = createBoardView();
     }
@@ -352,13 +347,13 @@ final class GlyphRuntime {
         context.bind(boardView);
         for (int index = 0; index < instances.size(); index++) {
             GlyphInstance<?> instance = instances.get(index);
-            if (skippedForCycle.contains(instance.spec().id())) {
+            if (skippedForCycle[index]) {
                 continue;
             }
             boardView.bind(instance);
-            context.bind(instance);
+            context.bind(index, instance);
             if (!outputPreconditionsHold(instance)) {
-                skippedForCycle.add(instance.spec().id());
+                skippedForCycle[index] = true;
                 continue;
             }
             if (!inputPreconditionsHold(instance)) {
@@ -399,7 +394,6 @@ final class GlyphRuntime {
     }
 
     private <S> S applyGlyph(GlyphInstance<S> instance) {
-        context.bind(instance);
         GlyphBehavior<S> behavior = instance.definition().behavior();
         return behavior.apply(context, instance.state());
     }
@@ -430,13 +424,5 @@ final class GlyphRuntime {
     private static GlyphInstance<?> withState(
             GlyphSpec spec, GlyphDefinition<?> definition, Object state) {
         return new GlyphInstance(spec, definition, state);
-    }
-
-    private static Map<String, Integer> indexById(List<GlyphInstance<?>> instances) {
-        Map<String, Integer> indexes = new LinkedHashMap<>();
-        for (int index = 0; index < instances.size(); index++) {
-            indexes.put(instances.get(index).spec().id(), index);
-        }
-        return Map.copyOf(indexes);
     }
 }

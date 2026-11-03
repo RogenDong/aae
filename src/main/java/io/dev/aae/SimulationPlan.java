@@ -1,9 +1,12 @@
 package io.dev.aae;
 
 import java.util.*;
-import java.util.function.Function;
 
-/** 不可变的模拟定义，与可变的运行态相互分离。 */
+/**
+ * 不可变的模拟定义，与可变的运行态相互分离。
+ * 机构、输入、输出、符文各自按列表声明顺序使用从 0 开始的下标；
+ * 下标只适用于当前计划，在运行、回滚和重置期间保持稳定。
+ */
 public final class SimulationPlan {
 
     private final List<MechanismSpec> mechanisms;
@@ -11,10 +14,8 @@ public final class SimulationPlan {
     private final TrackNetwork trackNetwork;
 
     private final List<InputSpec> inputs;
-    private final Map<String, Integer> inputIndexesById;
 
     private final List<OutputSpec> outputs;
-    private final Map<String, Integer> outputIndexesById;
 
     private final List<GlyphSpec> glyphs;
     private final Map<String, GlyphDefinition<?>> glyphDefinitions;
@@ -76,7 +77,7 @@ public final class SimulationPlan {
         Objects.requireNonNull(outputs, "outputs");
         Objects.requireNonNull(glyphs, "glyphs");
 
-        // 按部件声明顺序检查实际占位格点；索引只在构造期间使用。
+        // 按部件声明顺序检查实际占位格点。
         Map<GridPoint, String> occupants = new LinkedHashMap<>();
         for (int index = 0; index < mechanisms.size(); index++) {
             MechanismSpec mechanism = mechanisms.get(index);
@@ -88,11 +89,11 @@ public final class SimulationPlan {
                 occupants.putIfAbsent(point, "track[" + index + "]");
             }
         }
-        for (InputSpec input : inputs) {
-            validateIOLayout(occupants, input, "input");
+        for (int index = 0; index < inputs.size(); index++) {
+            validateIOLayout(occupants, inputs.get(index), "input[" + index + "]");
         }
-        for (OutputSpec output : outputs) {
-            validateIOLayout(occupants, output, "output");
+        for (int index = 0; index < outputs.size(); index++) {
+            validateIOLayout(occupants, outputs.get(index), "output[" + index + "]");
         }
 
         this.mechanisms = List.copyOf(mechanisms);
@@ -100,22 +101,20 @@ public final class SimulationPlan {
         this.trackNetwork = TrackNetwork.from(this.tracks);
 
         this.inputs = List.copyOf(inputs);
-        this.inputIndexesById = indexByIds("input", this.inputs, IOSpec::id);
 
         this.outputs = List.copyOf(outputs);
-        this.outputIndexesById = indexByIds("output", this.outputs, IOSpec::id);
 
         this.glyphs = List.copyOf(glyphs);
-        indexByIds("glyph", this.glyphs, GlyphSpec::id);
         if (this.glyphs.isEmpty()) {
             this.glyphDefinitions = Map.of();
         } else {
             this.glyphDefinitions = resolveDefinitions(this.glyphs);
         }
 
-        for (GlyphSpec glyph : this.glyphs) {
+        for (int index = 0; index < this.glyphs.size(); index++) {
+            GlyphSpec glyph = this.glyphs.get(index);
             for (GridPoint offset : glyphDefinition(glyph.typeId()).placeholder()) {
-                claimLayoutCell(occupants, glyph.worldPoint(offset), "glyph '" + glyph.id() + "'");
+                claimLayoutCell(occupants, glyph.worldPoint(offset), "glyph[" + index + "]");
             }
         }
 
@@ -125,9 +124,9 @@ public final class SimulationPlan {
         this.targetOutputs = targetOutputs;
     }
 
-    private static void validateIOLayout(Map<GridPoint, String> occupants, IOSpec io, String kind) {
+    private static void validateIOLayout(Map<GridPoint, String> occupants, IOSpec io, String owner) {
         for (AtomPlacement placement : io.atoms()) {
-            claimLayoutCell(occupants, placement.position(), kind + " '" + io.id() + "'");
+            claimLayoutCell(occupants, placement.position(), owner);
         }
     }
 
@@ -153,20 +152,6 @@ public final class SimulationPlan {
             resolved.put(glyph.typeId(), definition);
         }
         return resolved;
-    }
-
-    private static <T> Map<String, Integer> indexByIds(
-            String kind, List<T> items, Function<T, String> idOf) {
-        Map<String, Integer> indexes = new HashMap<>();
-        for (int index = 0; index < items.size(); index++) {
-            T item = Objects.requireNonNull(items.get(index), kind + "s must not contain null");
-            String id = Objects.requireNonNull(idOf.apply(item), "id");
-            Integer previous = indexes.put(id, index);
-            if (previous != null) {
-                throw new IllegalArgumentException("duplicate " + kind + " id: " + id);
-            }
-        }
-        return indexes;
     }
 
     public static SimulationPlan of(MechanismSpec... mechanisms) {
@@ -244,22 +229,6 @@ public final class SimulationPlan {
 
     public int size() {
         return mechanisms.size();
-    }
-
-    int indexOfInput(String id) {
-        return indexIn(inputIndexesById, "input", id);
-    }
-
-    int indexOfOutput(String id) {
-        return indexIn(outputIndexesById, "output", id);
-    }
-
-    private static int indexIn(Map<String, Integer> indexes, String kind, String id) {
-        Integer index = indexes.get(Objects.requireNonNull(id, "id"));
-        if (index == null) {
-            throw new IllegalArgumentException("unknown " + kind + " id: " + id);
-        }
-        return index;
     }
 
     /** 计划里全部符文占位格点，按声明顺序。 */

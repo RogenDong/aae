@@ -13,6 +13,7 @@ final class GlyphContextImpl implements GlyphContext {
     private long cycle;
     private GlyphPhase phase;
     private GlyphInstance<?> instance;
+    private int glyphIndex;
     private GlyphBoard board;
 
     GlyphContextImpl(long cycle, GlyphPhase phase) {
@@ -35,8 +36,15 @@ final class GlyphContextImpl implements GlyphContext {
         this.cycle = cycle;
     }
 
-    void bind(GlyphInstance<?> instance) {
+    void bind(int glyphIndex, GlyphInstance<?> instance) {
         this.instance = Objects.requireNonNull(instance, "instance");
+        this.glyphIndex = glyphIndex;
+    }
+
+    @Override
+    public int glyphIndex() {
+        requireInstance();
+        return glyphIndex;
     }
 
     @Override

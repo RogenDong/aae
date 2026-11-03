@@ -16,8 +16,8 @@ import java.util.Set;
  */
 public final class InputSpec extends IOSpec {
 
-    public InputSpec(String id, List<AtomPlacement> atoms) {
-        super(id, atoms);
+    public InputSpec(List<AtomPlacement> atoms) {
+        super(atoms);
         if (atoms.isEmpty()) {
             throw new IllegalArgumentException("input must produce at least one atom");
         }
@@ -32,12 +32,12 @@ public final class InputSpec extends IOSpec {
     }
 
     /** 由若干原子模板建立输入。 */
-    public static InputSpec of(String id, AtomPlacement... atoms) {
-        return new InputSpec(id, List.of(atoms));
+    public static InputSpec of(AtomPlacement... atoms) {
+        return new InputSpec(List.of(atoms));
     }
 
     /** 只生产一个原子的输入。 */
-    public static InputSpec single(String id, GridPoint position, Atom atom) {
-        return of(id, new AtomPlacement(position, atom));
+    public static InputSpec single(GridPoint position, Atom atom) {
+        return of(new AtomPlacement(position, atom));
     }
 }

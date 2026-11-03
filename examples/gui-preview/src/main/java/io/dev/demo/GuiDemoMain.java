@@ -18,17 +18,13 @@ public final class GuiDemoMain {
     private static final List<GlyphRegistry.GlyphHandle> GLYPH_HANDLES = new ArrayList<>();
 
     public static SimulationPlan createSamplePlan() {
-        var input1 = InputSpec.of(
-                "input_site1",
-                new AtomPlacement(point(-3, 1), Atom.of((byte) 7).withBond(Direction.NORTH, OMBonds.NORMAL.code)),
+        var input1 = InputSpec.of(new AtomPlacement(point(-3, 1), Atom.of((byte) 7).withBond(Direction.NORTH, OMBonds.NORMAL.code)),
                 new AtomPlacement(point(-3, 0), OMAtom.earth().withBond(Direction.SOUTH, OMBonds.NORMAL.code)));
-        var input2 = InputSpec.of("input_water_1", new AtomPlacement(point(0, 1), OMAtom.water()));
-        var input3 = InputSpec.of("input_water_2", new AtomPlacement(point(3, 0), OMAtom.water()));
+        var input2 = InputSpec.of(new AtomPlacement(point(0, 1), OMAtom.water()));
+        var input3 = InputSpec.of(new AtomPlacement(point(3, 0), OMAtom.water()));
 
         // 提交位置
-        var output = OutputSpec.of(
-                "output_site",
-                new AtomPlacement(point(3, 1), OMAtom.salt().withBond(Direction.EAST, OMBonds.NORMAL.code)),
+        var output = OutputSpec.of(new AtomPlacement(point(3, 1), OMAtom.salt().withBond(Direction.EAST, OMBonds.NORMAL.code)),
                 new AtomPlacement(point(4, 1), OMAtom.water().withBond(Direction.WEST, OMBonds.NORMAL.code)));
 
         GlyphSpec calcification = OMGlyphs.calcificationSpec(2, 1);

@@ -15,6 +15,8 @@
 - `SimulationPlan` 构造时校验静态布局：I/O 模板不能与任何其他 I/O、机构初始基座、轨道节点或符文占位重叠；符文不能与其他符文、机构初始基座或轨道节点重叠。机构之间不能共享初始基座格点；机构可以位于轨道上，臂杆和抓握点不计入静态占位。
 - 推进热路径不采样变换过程；每周期第二半周期结束时检查最终的分子/分子、分子/机构基座和机构基座之间的重叠，冲突会回滚并停机。两个机构可以在同一周期交换基座位置，只要最终格点不同。
 - 机构没有 ID，按 `SimulationPlan.mechanisms()` 的声明顺序定位，API 下标从 `0` 开始且在运行、回滚和重置期间保持稳定；下标只适用于当前计划。GUI 按相同顺序显示从 `1` 开始的编号。
+- 符文、输入、输出分别按 `SimulationPlan.glyphs()`、`inputs()`、`outputs()` 的声明顺序使用从 `0` 开始的下标，下标在运行、回滚和重置期间稳定且只适用于当前计划。符文 `typeId` 继续标识注册类型。
+- `glyphState(int glyphIndex)` 查询符文状态，回调通过 `GlyphContext.glyphIndex()` 获取自身下标；此下标与棋盘 API 的局部占位下标各自独立。`outputCount(int outputIndex)` 查询单个输出计数，`outputCounts()` 返回按输出声明顺序排列的 `long[]` 独立快照；下标查询越界抛出 `IndexOutOfBoundsException`。
 - `mechanism(index)` 和 `mechanisms()` 提供机构的只读状态值，包含基座位置、朝向、长度和抓取状态；`heldEntities(index)` 返回指定机构当前持有的实体。单机构查询下标越界时抛出 `IndexOutOfBoundsException`。
 - 原子类型与化学键类型都是 `byte` 且由调用方定义编码：项目只比较数值、不认识类型名称，内部只依赖两条约定——键字节 `0` 表示无键、`0xFF` 表示本周期临时键。`Atom` 由一个类型字节加四个方向的键字节组成，是不可变值对象。
 - `AtomGrid` 是 `GridPoint -> Atom` 的稀疏映射，成键时两端互惠写入；单侧键不构成连通。
@@ -243,13 +245,13 @@ SimulationPlan plan = new SimulationPlan(
         List.of(TrackSpec.orthogonal(
                 new GridPoint(0, 1),
                 new GridPoint(-1, 1))),
-        List.of(InputSpec.single("in", new GridPoint(0, 0), Atom.of((byte) 1))),
-        List.of(OutputSpec.single("out", new GridPoint(-1, 0), Atom.of((byte) 1))),
+        List.of(InputSpec.single(new GridPoint(0, 0), Atom.of((byte) 1))),
+        List.of(OutputSpec.single(new GridPoint(-1, 0), Atom.of((byte) 1))),
         1);
 
 OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
 simulator.run(4);
-// simulator.isComplete() == true, simulator.outputCount("out") == 1
+// simulator.isComplete() == true, simulator.outputCount(0) == 1
 ```
 
 - 输入足迹（模板全部格点）空闲时，输入在每个周期末尾生产模板原子；任一格点被

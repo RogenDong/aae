@@ -15,6 +15,9 @@ public interface GlyphContext {
     /** 当前半周期。 */
     GlyphPhase phase();
 
+    /** 当前符文在计划 glyphs() 列表中的下标，从 0 开始；运行、回滚和重置期间稳定。 */
+    int glyphIndex();
+
     /** 当前符文声明。 */
     GlyphSpec spec();
 

@@ -22,7 +22,7 @@ class GlyphBoardViewTest {
 
     private void bind(List<GridPoint> shape) {
         GlyphDefinition<Void> definition = GlyphDefinition.of("test:view", shape, context -> {});
-        view.bind(new GlyphInstance<>(new GlyphSpec("view", "test:view", ORIGIN), definition, null));
+        view.bind(new GlyphInstance<>(new GlyphSpec("test:view", ORIGIN), definition, null));
     }
 
     private List<Runnable> operations(int index) {

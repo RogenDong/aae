@@ -4,6 +4,7 @@ import java.util.Objects;
 
 /**
  * 计划里一个静态、带方向的符文实例声明。
+ * 实例按计划 glyphs() 列表的声明下标定位，不保存实例 ID。
  *
  * <p>与可移动的 {@link MechanismSpec} 分离：符文在计划构造时固定位置和朝向，运行期不再
  * 移动。占位用朝东状态下的方格局部坐标表达，{@code (0,0)} 是锚点，此时正 x 向东、正 y 向南。
@@ -11,18 +12,13 @@ import java.util.Objects;
  * 局部坐标到世界坐标的换算与 {@link Direction#localToWorld(GridPoint, GridPoint)}
  * 完全一致，由 {@link #worldPoint(GridPoint)} 完成。</p>
  *
- * @param id       计划内唯一的符文标识
  * @param typeId   {@code namespace:name} 形式的类型标识
  * @param position 锚点格点
  * @param direction 朝向；决定局部坐标到世界坐标的换算
  */
-public record GlyphSpec(String id, String typeId, GridPoint position, Direction direction) {
+public record GlyphSpec(String typeId, GridPoint position, Direction direction) {
 
     public GlyphSpec {
-        Objects.requireNonNull(id, "id");
-        if (id.isBlank()) {
-            throw new IllegalArgumentException("glyph id must not be blank");
-        }
         Objects.requireNonNull(typeId, "typeId");
         int separator = typeId.indexOf(':');
         if (separator <= 0
@@ -36,8 +32,8 @@ public record GlyphSpec(String id, String typeId, GridPoint position, Direction 
     }
 
     /** 默认朝东，直接使用定义中的局部形状。 */
-    public GlyphSpec(String id, String typeId, GridPoint position) {
-        this(id, typeId, position, Direction.EAST);
+    public GlyphSpec(String typeId, GridPoint position) {
+        this(typeId, position, Direction.EAST);
     }
 
     /**
@@ -89,6 +85,6 @@ public record GlyphSpec(String id, String typeId, GridPoint position, Direction 
 
     @Override
     public String toString() {
-        return "GlyphSpec[" + id + " " + typeId + " at " + position + " facing " + direction + "]";
+        return "GlyphSpec[" + typeId + " at " + position + " facing " + direction + "]";
     }
 }

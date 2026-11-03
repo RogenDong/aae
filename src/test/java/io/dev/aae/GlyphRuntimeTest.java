@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import io.dev.aae.om.OMBonds;
@@ -36,8 +37,7 @@ class GlyphRuntimeTest {
                             new MechanismSpec(new GridPoint(-1, -1), Direction.SOUTH,
                                     InstructionTape.once("fggr"))),
                     List.of(track(-2, 1, -1, 1, 0, 1), track(-1, -1, 0, -1, 1, -1)),
-                    List.of(InputSpec.of("in",
-                            new AtomPlacement(new GridPoint(-2, 0), sampleAtom()),
+                    List.of(InputSpec.of(new AtomPlacement(new GridPoint(-2, 0), sampleAtom()),
                             new AtomPlacement(new GridPoint(-1, 0), otherAtom()))), List.of(),
                     List.of(OMGlyphs.bondingSpec(0, 0, Direction.EAST)));
             simulator.init();
@@ -61,9 +61,7 @@ class GlyphRuntimeTest {
         GridPoint neighbor = anchor.translate(direction);
         try (var handle = GlyphRegistry.global().register(OMGlyphs.BONDING)) {
             GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
-                    List.of(InputSpec.of(
-                            "in",
-                            new AtomPlacement(anchor, sampleAtom()),
+                    List.of(InputSpec.of(new AtomPlacement(anchor, sampleAtom()),
                             new AtomPlacement(neighbor, otherAtom()))),
                     List.of(OMGlyphs.bondingSpec(0, 0, direction)));
 
@@ -91,9 +89,7 @@ class GlyphRuntimeTest {
         GridPoint neighbor = anchor.translate(direction);
         try (var handle = GlyphRegistry.global().register(OMGlyphs.UNBONDING)) {
             GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
-                    List.of(InputSpec.of(
-                            "in",
-                            new AtomPlacement(anchor,
+                    List.of(InputSpec.of(new AtomPlacement(anchor,
                                     sampleAtom().withBond(direction, OMBonds.NORMAL.code)),
                             new AtomPlacement(neighbor,
                                     otherAtom().withBond(direction.opposite(), OMBonds.NORMAL.code)))),
@@ -131,11 +127,9 @@ class GlyphRuntimeTest {
         // 在同一符文回调内先拆键再删除，避免声明两个占位重叠的符文。
         try (var handle = GlyphRegistry.global().register(removal)) {
             GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
-                    List.of(InputSpec.of(
-                            "in",
-                            new AtomPlacement(new GridPoint(0, 0), eastBonded()),
+                    List.of(InputSpec.of(new AtomPlacement(new GridPoint(0, 0), eastBonded()),
                             new AtomPlacement(new GridPoint(1, 0), westBonded()))),
-                    List.of(new GlyphSpec("removal", removalType, new GridPoint(0, 0), Direction.EAST)));
+                    List.of(new GlyphSpec(removalType, new GridPoint(0, 0), Direction.EAST)));
 
             simulator.step();
 
@@ -158,8 +152,8 @@ class GlyphRuntimeTest {
             }
         }))) {
             GlyphRuntimeFixture fixture = new GlyphRuntimeFixture(
-                    List.of(InputSpec.single("initial", target, sampleAtom())),
-                    List.of(new GlyphSpec("producer", type, target)));
+                    List.of(InputSpec.single(target, sampleAtom())),
+                    List.of(new GlyphSpec(type, target)));
             fixture.runtime.beginCycle(0);
             fixture.half(GlyphPhase.FIRST_HALF);
             assertEquals(java.util.Set.of(target), fixture.runtime.reservedCells());
@@ -184,8 +178,8 @@ class GlyphRuntimeTest {
         }));
 
         GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
-                List.of(InputSpec.single("in", new GridPoint(0, 0), occupant)),
-                glyphs(new GlyphSpec("spawner", spawnerType,
+                List.of(InputSpec.single(new GridPoint(0, 0), occupant)),
+                glyphs(new GlyphSpec(spawnerType,
                         new GridPoint(0, 0), Direction.NORTH)));
 
         simulator.step();
@@ -216,8 +210,8 @@ class GlyphRuntimeTest {
                 }));
 
         GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
-                List.of(InputSpec.single("in", new GridPoint(4, 4), occupant)),
-                List.of(new GlyphSpec("producer", producerType, new GridPoint(4, 4), Direction.NORTH)));
+                List.of(InputSpec.single(new GridPoint(4, 4), occupant)),
+                List.of(new GlyphSpec(producerType, new GridPoint(4, 4), Direction.NORTH)));
 
         // 周期 0：棋盘初态占着目标格，产物只在本周期内等待。
         simulator.step();
@@ -248,12 +242,12 @@ class GlyphRuntimeTest {
                     List.of(new MechanismSpec(new GridPoint(0, 1), Direction.NORTH,
                             InstructionTape.once("fg"))),
                     List.of(track(0, 1, 1, 1)),
-                    List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())), List.of(),
-                    List.of(new GlyphSpec("producer", type, new GridPoint(1, 0))));
+                    List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())), List.of(),
+                    List.of(new GlyphSpec(type, new GridPoint(1, 0))));
             simulator.init();
             simulator.step();
             long held = simulator.entityAt(new GridPoint(0, 0));
-            Object state = simulator.glyphState("producer");
+            Object state = simulator.glyphState(0);
 
             assertThrows(GlyphExecutionException.class, simulator::step);
             assertTrue(simulator.isHalted());
@@ -263,7 +257,7 @@ class GlyphRuntimeTest {
             assertEquals(1, simulator.grabsAt(new GridPoint(0, 0)));
             assertNull(simulator.atomAt(new GridPoint(1, 0)));
             assertEquals(0, simulator.pendingGlyphSpawnCount());
-            assertEquals(state, simulator.glyphState("producer"));
+            assertEquals(state, simulator.glyphState(0));
         }
     }
 
@@ -286,7 +280,7 @@ class GlyphRuntimeTest {
 
         OrthogonalSimulator simulator = simulatorOf(
                 List.of(), List.of(), List.of(),
-                glyphs(new GlyphSpec("glyph", glyphType, new GridPoint(6, 6), Direction.NORTH)));
+                glyphs(new GlyphSpec(glyphType, new GridPoint(6, 6), Direction.NORTH)));
 
         simulator.step();
         assertEquals(0, simulator.pendingGlyphSpawnCount());
@@ -308,15 +302,15 @@ class GlyphRuntimeTest {
                 context -> calls.add("cycle=" + context.cycle())));
 
         GlyphRuntimeFixture wrongType = new GlyphRuntimeFixture(
-                List.of(InputSpec.single("in", new GridPoint(2, 2), sampleAtom())),
-                glyphs(new GlyphSpec("checked", glyphType,
+                List.of(InputSpec.single(new GridPoint(2, 2), sampleAtom())),
+                glyphs(new GlyphSpec(glyphType,
                         new GridPoint(2, 2), Direction.NORTH)));
         wrongType.step();
         assertTrue(calls.isEmpty(), "输入类型不匹配时符文必须整条跳过");
 
         GlyphRuntimeFixture matching = new GlyphRuntimeFixture(
-                List.of(InputSpec.single("in", new GridPoint(2, 2), Atom.of((byte) 5))),
-                glyphs(new GlyphSpec("checked", glyphType,
+                List.of(InputSpec.single(new GridPoint(2, 2), Atom.of((byte) 5))),
+                glyphs(new GlyphSpec(glyphType,
                         new GridPoint(2, 2), Direction.NORTH)));
         matching.step();
         assertEquals(2, calls.size(), "类型匹配时两个半周期各执行一次");
@@ -335,8 +329,8 @@ class GlyphRuntimeTest {
 
         // (4,3) 的棋盘初态占着符文输出格点：整条符文必须跳过。
         GlyphRuntimeFixture blocked = new GlyphRuntimeFixture(
-                List.of(InputSpec.single("in", new GridPoint(4, 3), sampleAtom())),
-                glyphs(new GlyphSpec("checked", glyphType,
+                List.of(InputSpec.single(new GridPoint(4, 3), sampleAtom())),
+                glyphs(new GlyphSpec(glyphType,
                         new GridPoint(3, 3), Direction.EAST)));
         blocked.step();
         assertTrue(calls.isEmpty(), "输出格被占用时符文必须整条跳过");
@@ -344,8 +338,8 @@ class GlyphRuntimeTest {
 
         // 对照：输出格空闲时两个半周期各执行一次。
         GlyphRuntimeFixture free = new GlyphRuntimeFixture(
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
-                glyphs(new GlyphSpec("checked", glyphType,
+                List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())),
+                glyphs(new GlyphSpec(glyphType,
                         new GridPoint(3, 3), Direction.EAST)));
         free.step();
         assertEquals(2, calls.size());
@@ -357,13 +351,17 @@ class GlyphRuntimeTest {
     void glyphBusinessExceptionRollsBackTheWholeCycleAndIsRethrown() {
         IllegalStateException failure = new IllegalStateException("boom");
         String glyphType = uniqueTypeId("throwing");
+        List<Integer> order = new ArrayList<>();
         OrthogonalSimulator[] observed = new OrthogonalSimulator[1];
         try (var handle = GlyphRegistry.global().register(new GlyphDefinition<Integer>(
                 glyphType,
                 List.of(new GridPoint(0, 0), new GridPoint(1, 0)),
                 () -> 0,
                 (context, state) -> {
-                    if (context.cycle() == 1) {
+                    int index = context.glyphIndex();
+                    order.add(index);
+                    assertEquals(new GridPoint(5 + index * 5, 5), context.spec().position());
+                    if (index == 0 && context.cycle() == 1) {
                         if (context.phase().isFirstHalf()) {
                             assertEquals(TryResult.APPLIED, context.board().spawn(0, otherAtom()));
                             assertEquals(TryResult.APPLIED, context.board().queueSpawn(1, sampleAtom()));
@@ -375,17 +373,17 @@ class GlyphRuntimeTest {
                             throw failure;
                         }
                     }
-                    return state + 1;
+                    return state + index + 1;
                 }))) {
 
             OrthogonalSimulator simulator = simulatorOf(
                     List.of(new MechanismSpec(new GridPoint(-1, 1), Direction.NORTH,
                             InstructionTape.once("fg"))),
                     List.of(track(-1, 1, 0, 1)),
-                    List.of(InputSpec.single("in", new GridPoint(-1, 0), sampleAtom())),
+                    List.of(InputSpec.single(new GridPoint(-1, 0), sampleAtom())),
                     List.of(),
-                    glyphs(new GlyphSpec("throwing", glyphType,
-                            new GridPoint(5, 5), Direction.EAST)));
+                    glyphs(new GlyphSpec(glyphType, new GridPoint(5, 5)),
+                            new GlyphSpec(glyphType, new GridPoint(10, 5))));
             observed[0] = simulator;
             simulator.init();
 
@@ -393,7 +391,9 @@ class GlyphRuntimeTest {
             assertEquals(1, simulator.cycle());
             assertEquals(1, simulator.boardSize());
             long entity = simulator.entityAt(new GridPoint(-1, 0));
-            assertEquals(2, simulator.glyphState("throwing"));
+            assertEquals(List.of(0, 1, 0, 1), order);
+            assertEquals(2, simulator.glyphState(0));
+            assertEquals(4, simulator.glyphState(1));
 
             IllegalStateException thrown = assertThrows(IllegalStateException.class, simulator::step);
             assertSame(failure, thrown);
@@ -406,7 +406,8 @@ class GlyphRuntimeTest {
             assertEquals(List.of(entity), simulator.heldEntities(0));
             assertEquals(1, simulator.grabsAt(new GridPoint(-1, 0)));
             assertEquals(new GridPoint(-1, 1), simulator.mechanism(0).position());
-            assertEquals(2, simulator.glyphState("throwing"));
+            assertEquals(2, simulator.glyphState(0));
+            assertEquals(4, simulator.glyphState(1));
             assertEquals(0, simulator.pendingGlyphSpawnCount());
             assertNull(simulator.atomAt(new GridPoint(0, 0)));
             assertNull(simulator.atomAt(new GridPoint(5, 5)));
@@ -422,24 +423,29 @@ class GlyphRuntimeTest {
                 glyphType,
                 List.of(new GridPoint(0, 0)),
                 () -> null,
-                (context, state) -> state == null ? 1 : state + 1));
+                (context, state) -> (state == null ? 0 : state) + context.glyphIndex() + 1));
 
         OrthogonalSimulator simulator = simulatorOf(
                 List.of(), List.of(), List.of(),
-                glyphs(new GlyphSpec("stateful", glyphType,
-                        new GridPoint(8, 8), Direction.NORTH)));
+                glyphs(new GlyphSpec(glyphType, new GridPoint(8, 8)),
+                        new GlyphSpec(glyphType, new GridPoint(4, 4))));
 
         simulator.step();
-        assertEquals(2, simulator.glyphState("stateful"));
+        assertEquals(2, simulator.glyphState(0));
+        assertEquals(4, simulator.glyphState(1));
 
         simulator.reset();
-        assertNull(simulator.glyphState("stateful"));
+        assertNull(simulator.glyphState(0));
+        assertNull(simulator.glyphState(1));
         assertEquals(0, simulator.pendingGlyphSpawnCount());
+        simulator.step();
+        assertEquals(2, simulator.glyphState(0));
+        assertEquals(4, simulator.glyphState(1));
 
         // 重置后第一次输入生产仍然从 1 号实体开始。
         OrthogonalSimulator withInput = simulatorOf(
                 List.of(),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
+                List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())),
                 List.of(),
                 List.of());
         withInput.init();
@@ -452,23 +458,73 @@ class GlyphRuntimeTest {
     }
 
     @Test
+    void sameTypeGlyphsSkipIndependentlyForTheWholeCycleAndRetryNextCycle() {
+        String type = uniqueTypeId("skip");
+        AtomicBoolean blocked = new AtomicBoolean(true);
+        List<Integer> order = new ArrayList<>();
+        try (var handle = GlyphRegistry.global().register(new GlyphDefinition<>(type,
+                List.of(new GridPoint(0, 0)), List.of(),
+                List.of(GlyphDefinition.OutputSlot.freeWhen(0, reader -> !blocked.get())),
+                () -> 0, (context, state) -> {
+                    order.add(context.glyphIndex());
+                    return state + 1;
+                }))) {
+            // 中间的符文在第一半周期解除阻塞；先前被阻塞的实例仍须跳过本周期第二半段。
+            String observerType = uniqueTypeId("unblock");
+            try (var observer = GlyphRegistry.global().register(GlyphDefinition.single(observerType,
+                    context -> blocked.set(false)))) {
+                var simulator = simulatorOf(List.of(), List.of(), List.of(), List.of(
+                        new GlyphSpec(type, new GridPoint(0, 0)),
+                        new GlyphSpec(observerType, new GridPoint(1, 0)),
+                        new GlyphSpec(type, new GridPoint(2, 0))));
+                simulator.step();
+                assertEquals(List.of(2, 2), order);
+                assertEquals(0, simulator.glyphState(0));
+                assertEquals(2, simulator.glyphState(2));
+                order.clear();
+                simulator.step();
+                assertEquals(List.of(0, 2, 0, 2), order);
+                assertEquals(2, simulator.glyphState(0));
+                assertEquals(4, simulator.glyphState(2));
+            }
+        }
+    }
+
+    @Test
+    void glyphStateRejectsIndexesOutsideEmptyAndNonemptyLists() {
+        String type = uniqueTypeId("bounds");
+        try (var handle = GlyphRegistry.global().register(GlyphDefinition.single(type, context -> {}))) {
+            var populated = simulatorOf(List.of(), List.of(), List.of(),
+                    glyphs(new GlyphSpec(type, new GridPoint(2, 0))));
+            var empty = new OrthogonalSimulator(SimulationPlan.of());
+            for (var simulator : List.of(empty, populated)) {
+                assertThrows(IndexOutOfBoundsException.class, () -> simulator.glyphState(-1));
+                assertThrows(IndexOutOfBoundsException.class,
+                        () -> simulator.glyphState(simulator.glyphCount()));
+            }
+        }
+        var context = new GlyphContextImpl(0, GlyphPhase.FIRST_HALF);
+        assertThrows(IllegalStateException.class, context::glyphIndex);
+    }
+
+    @Test
     void glyphsRunInDeclarationOrderWithinOneHalfCycle() {
-        List<String> order = new ArrayList<>();
+        List<Integer> order = new ArrayList<>();
         String firstType = uniqueTypeId("first");
         GlyphRegistry.global().register(GlyphDefinition.single(
-                firstType, context -> order.add(context.spec().id())));
+                firstType, context -> order.add(context.glyphIndex())));
         String secondType = uniqueTypeId("second");
         GlyphRegistry.global().register(GlyphDefinition.single(
-                secondType, context -> order.add(context.spec().id())));
+                secondType, context -> order.add(context.glyphIndex())));
 
         OrthogonalSimulator simulator = simulatorOf(
                 List.of(), List.of(), List.of(),
                 List.of(
-                        new GlyphSpec("second", secondType, new GridPoint(0, 0), Direction.NORTH),
-                        new GlyphSpec("first", firstType, new GridPoint(2, 0), Direction.NORTH)));
+                        new GlyphSpec(secondType, new GridPoint(0, 0), Direction.NORTH),
+                        new GlyphSpec(firstType, new GridPoint(2, 0), Direction.NORTH)));
 
         simulator.step();
-        assertEquals(List.of("second", "first", "second", "first"), order);
+        assertEquals(List.of(0, 1, 0, 1), order);
     }
 
     @Test
@@ -509,12 +565,11 @@ class GlyphRuntimeTest {
         }));
 
         GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
-                List.of(InputSpec.of("shared-view-input",
-                        new AtomPlacement(new GridPoint(0, 0), Atom.of((byte) 1)),
+                List.of(InputSpec.of(new AtomPlacement(new GridPoint(0, 0), Atom.of((byte) 1)),
                         new AtomPlacement(new GridPoint(5, 4), Atom.of((byte) 2)))),
                 List.of(
-                        new GlyphSpec("first", firstType, new GridPoint(0, 0), Direction.NORTH),
-                        new GlyphSpec("second", secondType, new GridPoint(4, 4), Direction.NORTH)));
+                        new GlyphSpec(firstType, new GridPoint(0, 0), Direction.NORTH),
+                        new GlyphSpec(secondType, new GridPoint(4, 4), Direction.NORTH)));
 
         simulator.step();
 
@@ -572,18 +627,11 @@ class GlyphRuntimeTest {
     }
 
     private static GlyphSpec glyph(String typeId, long x, long y, Direction direction) {
-        return new GlyphSpec(typeId, typeId, new GridPoint(x, y), direction);
-    }
-
-    /** 占位符：{@code glyph()} 用类型 ID 当符文 ID，这里显式换一个可读的 ID。 */
-    private static GlyphSpec withId(GlyphSpec spec, String id) {
-        return new GlyphSpec(id, spec.typeId(), spec.position(), spec.direction());
+        return new GlyphSpec(typeId, new GridPoint(x, y), direction);
     }
 
     private static InputSpec twoAtomInput(Atom first, Atom second) {
-        return InputSpec.of(
-                "in",
-                new AtomPlacement(new GridPoint(0, 0), first),
+        return InputSpec.of(new AtomPlacement(new GridPoint(0, 0), first),
                 new AtomPlacement(new GridPoint(1, 0), second));
     }
 

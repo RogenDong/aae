@@ -28,31 +28,27 @@ class SimulationPlanLayoutTest {
                     ? List.of(TrackSpec.orthogonal(ORIGIN)) : List.of();
             List<GlyphSpec> glyphs = firstKind.equals("glyph")
                     ? (secondKind.equals("glyph")
-                        ? List.of(new GlyphSpec("glyph-a", type, ORIGIN), new GlyphSpec("glyph-b", type, ORIGIN))
-                        : List.of(new GlyphSpec("glyph-a", type, ORIGIN)))
-                    : (secondKind.equals("glyph") ? List.of(new GlyphSpec("glyph-b", type, ORIGIN)) : List.of());
+                        ? List.of(new GlyphSpec(type, ORIGIN), new GlyphSpec(type, ORIGIN))
+                        : List.of(new GlyphSpec(type, ORIGIN)))
+                    : (secondKind.equals("glyph") ? List.of(new GlyphSpec(type, ORIGIN)) : List.of());
             List<InputSpec> inputs = firstKind.equals("input")
                     ? (secondKind.equals("input")
-                        ? List.of(InputSpec.single("input-a", ORIGIN, ATOM), InputSpec.single("input-b", ORIGIN, ATOM))
-                        : List.of(InputSpec.single("input-a", ORIGIN, ATOM)))
-                    : (secondKind.equals("input") ? List.of(InputSpec.single("input-b", ORIGIN, ATOM)) : List.of());
+                        ? List.of(InputSpec.single(ORIGIN, ATOM), InputSpec.single(ORIGIN, ATOM))
+                        : List.of(InputSpec.single(ORIGIN, ATOM)))
+                    : (secondKind.equals("input") ? List.of(InputSpec.single(ORIGIN, ATOM)) : List.of());
             List<OutputSpec> outputs = firstKind.equals("output")
                     ? (secondKind.equals("output")
-                        ? List.of(OutputSpec.single("output-a", ORIGIN, ATOM), OutputSpec.single("output-b", ORIGIN, ATOM))
-                        : List.of(OutputSpec.single("output-a", ORIGIN, ATOM))) : List.of();
+                        ? List.of(OutputSpec.single(ORIGIN, ATOM), OutputSpec.single(ORIGIN, ATOM))
+                        : List.of(OutputSpec.single(ORIGIN, ATOM))) : List.of();
             var failure = assertThrows(IllegalArgumentException.class,
                     () -> new SimulationPlan(arms, tracks, inputs, outputs, glyphs, 1));
             assertTrue(failure.getMessage().contains(firstKind));
             assertTrue(failure.getMessage().contains(secondKind));
             assertTrue(failure.getMessage().contains(ORIGIN.toString()));
-            String firstId = firstKind + "-a";
-            String secondId = switch (secondKind) {
-                case "mechanism" -> "mechanism[0]";
-                case "track" -> "track[0]";
-                default -> secondKind + "-b";
-            };
-            assertTrue(failure.getMessage().contains(firstId));
-            assertTrue(failure.getMessage().contains(secondId));
+            String firstOwner = firstKind + "[0]";
+            String secondOwner = secondKind + "[" + (firstKind.equals(secondKind) ? 1 : 0) + "]";
+            assertTrue(failure.getMessage().contains(firstOwner));
+            assertTrue(failure.getMessage().contains(secondOwner));
         }
     }
 
@@ -62,11 +58,11 @@ class SimulationPlanLayoutTest {
         String type = typeId();
         GridPoint anchor = new GridPoint(-7, -5);
         GridPoint offset = new GridPoint(2, 1);
-        GlyphSpec glyph = new GlyphSpec("rotated", type, anchor, direction);
+        GlyphSpec glyph = new GlyphSpec(type, anchor, direction);
         GridPoint collision = glyph.worldPoint(offset);
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.of(type,
                 List.of(ORIGIN, offset), context -> {}))) {
-            InputSpec input = InputSpec.of("multi", new AtomPlacement(new GridPoint(50, 50), ATOM),
+            InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(50, 50), ATOM),
                     new AtomPlacement(collision, ATOM));
             var failure = assertThrows(IllegalArgumentException.class,
                     () -> new SimulationPlan(List.of(), List.of(), List.of(input), List.of(), List.of(glyph), 1));
@@ -79,9 +75,9 @@ class SimulationPlanLayoutTest {
 
     @Test
     void detectsPartialIOAndGlyphOverlaps() {
-        InputSpec input = InputSpec.of("input", new AtomPlacement(new GridPoint(-1, 0), ATOM),
+        InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(-1, 0), ATOM),
                 new AtomPlacement(ORIGIN, ATOM));
-        OutputSpec output = OutputSpec.of("output", new AtomPlacement(new GridPoint(1, 0), ATOM),
+        OutputSpec output = OutputSpec.of(new AtomPlacement(new GridPoint(1, 0), ATOM),
                 new AtomPlacement(ORIGIN, ATOM));
         assertThrows(IllegalArgumentException.class,
                 () -> new SimulationPlan(List.of(), List.of(input), List.of(output), 1));
@@ -89,8 +85,8 @@ class SimulationPlanLayoutTest {
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.of(type,
                 List.of(ORIGIN, new GridPoint(1, 0)), context -> {}))) {
             assertThrows(IllegalArgumentException.class, () -> new SimulationPlan(List.of(),
-                    List.of(new GlyphSpec("left", type, ORIGIN),
-                            new GlyphSpec("right", type, new GridPoint(2, 0), Direction.WEST)), 1));
+                    List.of(new GlyphSpec(type, ORIGIN),
+                            new GlyphSpec(type, new GridPoint(2, 0), Direction.WEST)), 1));
         }
     }
 
@@ -120,9 +116,9 @@ class SimulationPlanLayoutTest {
                 List.of(ORIGIN, new GridPoint(1, 0)), context -> {}))) {
             var plan = assertDoesNotThrow(() -> new SimulationPlan(List.of(arm(ORIGIN, Direction.EAST, 3),
                     arm(new GridPoint(0, 5), Direction.EAST, 3)), List.of(),
-                    List.of(InputSpec.single("in", new GridPoint(1, 0), ATOM)),
-                    List.of(OutputSpec.single("out", new GridPoint(3, 0), ATOM)),
-                    List.of(new GlyphSpec("glyph", type, new GridPoint(2, 5))), 1));
+                    List.of(InputSpec.single(new GridPoint(1, 0), ATOM)),
+                    List.of(OutputSpec.single(new GridPoint(3, 0), ATOM)),
+                    List.of(new GlyphSpec(type, new GridPoint(2, 5))), 1));
             assertDoesNotThrow(() -> new OrthogonalSimulator(plan));
         }
     }
@@ -134,10 +130,10 @@ class SimulationPlanLayoutTest {
                 List.of(ORIGIN, new GridPoint(2, 2)), context -> {}))) {
             var plan = assertDoesNotThrow(() -> new SimulationPlan(List.of(), List.of(TrackSpec.diagonal(
                     new GridPoint(-2, -2), new GridPoint(-1, -1))),
-                    List.of(InputSpec.of("sparse", new AtomPlacement(new GridPoint(-2, -1), ATOM),
+                    List.of(InputSpec.of(new AtomPlacement(new GridPoint(-2, -1), ATOM),
                             new AtomPlacement(new GridPoint(1, 1), ATOM))),
-                    List.of(OutputSpec.single("adjacent", new GridPoint(1, 0), ATOM)),
-                    List.of(new GlyphSpec("sparse", type, ORIGIN)), 1));
+                    List.of(OutputSpec.single(new GridPoint(1, 0), ATOM)),
+                    List.of(new GlyphSpec(type, ORIGIN)), 1));
             assertDoesNotThrow(() -> new OrthogonalSimulator(plan));
         }
     }
@@ -151,10 +147,10 @@ class SimulationPlanLayoutTest {
                 factories::incrementAndGet, (context, state) -> { callbacks.incrementAndGet(); return state; }))) {
             Executable construct = () -> new SimulationPlan(
                     List.of(arm(ORIGIN, Direction.EAST, 1)), List.of(TrackSpec.orthogonal(ORIGIN)),
-                    List.of(InputSpec.single("input", ORIGIN, ATOM)), List.of(),
-                    List.of(new GlyphSpec("glyph", type, ORIGIN)), 1);
+                    List.of(InputSpec.single(ORIGIN, ATOM)), List.of(),
+                    List.of(new GlyphSpec(type, ORIGIN)), 1);
             String message = assertThrows(IllegalArgumentException.class, construct).getMessage();
-            assertEquals("input 'input' overlaps mechanism[0] at " + ORIGIN, message);
+            assertEquals("input[0] overlaps mechanism[0] at " + ORIGIN, message);
             assertEquals(message, assertThrows(IllegalArgumentException.class, construct).getMessage());
             assertEquals(0, factories.get());
             assertEquals(0, callbacks.get());
@@ -169,7 +165,7 @@ class SimulationPlanLayoutTest {
         try (var handle = GlyphRegistry.global().register(new GlyphDefinition<>(type, List.of(ORIGIN),
                 factories::incrementAndGet, (context, state) -> { callbacks.incrementAndGet(); return state; }))) {
             var plan = assertDoesNotThrow(() -> new SimulationPlan(List.of(),
-                    List.of(new GlyphSpec("glyph", type, ORIGIN)), 1));
+                    List.of(new GlyphSpec(type, ORIGIN)), 1));
             assertEquals(0, factories.get());
             assertEquals(0, callbacks.get());
 
@@ -185,9 +181,9 @@ class SimulationPlanLayoutTest {
         SimulationPlan valid;
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.of(type,
                 List.of(ORIGIN, new GridPoint(2, 0)), context -> {}))) {
-            valid = new SimulationPlan(List.of(), List.of(new GlyphSpec("glyph", type, ORIGIN)), 1);
+            valid = new SimulationPlan(List.of(), List.of(new GlyphSpec(type, ORIGIN)), 1);
             assertThrows(IllegalArgumentException.class, () -> new SimulationPlan(List.of(), List.of(),
-                    List.of(InputSpec.single("in", new GridPoint(2, 0), ATOM)), List.of(), valid.glyphs(), 1));
+                    List.of(InputSpec.single(new GridPoint(2, 0), ATOM)), List.of(), valid.glyphs(), 1));
         }
         assertDoesNotThrow(() -> new OrthogonalSimulator(valid));
         assertEquals(List.of(ORIGIN, new GridPoint(2, 0)), valid.glyphPlaceholderCells());

@@ -68,9 +68,15 @@
 
 ## 5. 符文系统
 
-`GlyphSpec` 是静态锚点和朝向；`GlyphDefinition` 定义占位、IO声明、状态工厂和行为。
-`SimulationPlan` 只检查轨道本身的静态拓扑，不在构造期排斥符文、机构、IO模板的坐标重叠；
-这些实例重叠由运行期检查处理。
+`GlyphSpec` 声明类型 `typeId`、静态锚点和朝向；`GlyphDefinition` 定义占位、IO声明、状态工厂和行为。
+符文、输入、输出分别按 `SimulationPlan.glyphs()`、`inputs()`、`outputs()`的声明顺序使用从 `0`
+开始的下标。计划保存列表副本，下标只适用于当前计划，运行、整周期回滚和重置都保持各槽位对应的声明。
+`SimulationPlan` 在构造时检查静态布局，冲突诊断使用 `glyph[n]`、`input[n]`、`output[n]` 标注实例及其冲突坐标。
+
+`OrthogonalSimulator.glyphState(int glyphIndex)` 读取对应实例状态；回调使用
+`GlyphContext.glyphIndex()` 获取自身在计划中的下标。输出计数通过 `outputCount(int outputIndex)`
+读取，`outputCounts()` 返回按输出声明顺序排列的 `long[]` 副本；修改副本不影响模拟器，后续运行、
+回滚和重置也不改变已返回的快照。符文状态及输出计数查询越界抛出 `IndexOutOfBoundsException`。
 
 符文局部形状按朝东状态定义，`(0,0)` 是锚点，正 x 向东、正 y 向南；`GlyphSpec` 省略朝向时
 默认 `EAST`。实例朝向决定绕锚点的旋转：`EAST` 为 `(x,y)`，`SOUTH` 为 `(-y,x)`，
@@ -80,6 +86,7 @@
 `GlyphContext.neighbor` 的方向参数以及输入槽的键方向仍按世界方向解释。
 
 `GlyphReader` / `GlyphBoard` 的 `int placeholder` 是当前定义占位列表的 0-based 索引，
+与 `glyphIndex()` 表示的计划内符文实例下标独立。
 这是行为访问棋盘的唯一定位方式。输入和输出的 `position()` 也返回这个索引；定义构造时
 检查范围、各自重复以及IO共享索引。越界抛出 `IndexOutOfBoundsException`，消息包含
 索引、placeholder 数量和定义类型。空格点的 `entityAt(index)` 返回 `0L`，有效实体 ID 为正数 `long`。
@@ -97,6 +104,8 @@
 符文阶段结束后视图失效，任何读写方法（包括只读查询）都抛 `GlyphExecutionException`。
 
 输入格点不匹配时整条符文跳过。输出格点被占用时整条符文在本整数周期的两个半周期都跳过。
+跳过标记使用与符文实例数量等长的 `boolean[]`，按实例下标读写；每个周期开始、回滚和重置时
+全部清零，同类型符文的标记相互独立。
 
 ### 5.2 写操作
 

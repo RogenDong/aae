@@ -201,7 +201,7 @@ class GlyphRegistryTest {
         GlyphDefinition<Void> original = noopDefinition(typeId);
         GlyphRegistry.GlyphHandle handle = GlyphRegistry.global().register(original);
         try {
-            SimulationPlan plan = glyphPlan(List.of(glyph("probe", typeId)));
+            SimulationPlan plan = glyphPlan(List.of(glyph(typeId)));
 
             assertSame(original, plan.glyphDefinition(typeId));
             assertTrue(plan.hasGlyphs());
@@ -229,13 +229,13 @@ class GlyphRegistryTest {
         GlyphDefinition<Void> replacement = noopDefinition(typeId);
 
         GlyphRegistry.GlyphHandle handle = GlyphRegistry.global().register(first);
-        SimulationPlan firstPlan = glyphPlan(List.of(glyph("probe", typeId)));
+        SimulationPlan firstPlan = glyphPlan(List.of(glyph(typeId)));
         assertSame(first, firstPlan.glyphDefinition(typeId));
         handle.close();
 
         // 关闭之后重新注册同一类型 ID 的另一份定义，新计划拿到新定义，旧计划保持旧定义。
         try (GlyphRegistry.GlyphHandle second = GlyphRegistry.global().register(replacement)) {
-            SimulationPlan secondPlan = glyphPlan(List.of(glyph("probe", typeId)));
+            SimulationPlan secondPlan = glyphPlan(List.of(glyph(typeId)));
             assertSame(replacement, secondPlan.glyphDefinition(typeId));
             assertSame(first, firstPlan.glyphDefinition(typeId));
         }
@@ -247,30 +247,30 @@ class GlyphRegistryTest {
     void glyphSpecRejectsInvalidDeclarations() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new GlyphSpec("", "custom:probe", point(0, 0), Direction.NORTH));
+                () -> new GlyphSpec("", point(0, 0), Direction.NORTH));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new GlyphSpec("  ", "custom:probe", point(0, 0), Direction.NORTH));
+                () -> new GlyphSpec("  ", point(0, 0), Direction.NORTH));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new GlyphSpec("probe", "noNamespace", point(0, 0), Direction.NORTH));
+                () -> new GlyphSpec("noNamespace", point(0, 0), Direction.NORTH));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new GlyphSpec("probe", "name:", point(0, 0), Direction.NORTH));
+                () -> new GlyphSpec("name:", point(0, 0), Direction.NORTH));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new GlyphSpec("probe", ":name", point(0, 0), Direction.NORTH));
+                () -> new GlyphSpec(":name", point(0, 0), Direction.NORTH));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new GlyphSpec("probe", "a:b:c", point(0, 0), Direction.NORTH));
-        assertThrows(NullPointerException.class, () -> new GlyphSpec(null, "a:b", point(0, 0), Direction.NORTH));
-        assertThrows(NullPointerException.class, () -> new GlyphSpec("p", "a:b", null, Direction.NORTH));
-        assertThrows(NullPointerException.class, () -> new GlyphSpec("p", "a:b", point(0, 0), null));
+                () -> new GlyphSpec("a:b:c", point(0, 0), Direction.NORTH));
+        assertThrows(NullPointerException.class, () -> new GlyphSpec(null, point(0, 0), Direction.NORTH));
+        assertThrows(NullPointerException.class, () -> new GlyphSpec("a:b", null, Direction.NORTH));
+        assertThrows(NullPointerException.class, () -> new GlyphSpec("a:b", point(0, 0), null));
     }
 
     @Test
     void glyphSpecDefaultsToTheUnrotatedEastFacingShape() {
-        GlyphSpec spec = new GlyphSpec("probe", "custom:probe", point(5, 7));
+        GlyphSpec spec = new GlyphSpec("custom:probe", point(5, 7));
 
         assertEquals(Direction.EAST, spec.direction());
         assertEquals(point(2, 3), spec.worldOffset(point(2, 3)));
@@ -327,7 +327,7 @@ class GlyphRegistryTest {
                         List.of(),
                         List.of(),
                         List.of(),
-                        List.of(glyph("probe", "custom:never-registered")),
+                        List.of(glyph("custom:never-registered")),
                         1));
         assertTrue(unknown.getMessage().contains("custom:never-registered"));
     }
@@ -454,7 +454,7 @@ class GlyphRegistryTest {
         var gr = GlyphRegistry.global();
         try (var keptHandle = gr.register(noopDefinition(kept));
              var droppedHandle = gr.register(noopDefinition(dropped))) {
-            GlyphSpec only = glyph("kept", kept);
+            GlyphSpec only = glyph(kept);
             SimulationPlan plan = glyphPlan(List.of(only));
 
             // 计划只快照用到的类型，声明与定义互相闭合。
@@ -491,12 +491,12 @@ class GlyphRegistryTest {
 
     // ---------- 辅助 ----------
 
-    static GlyphSpec glyph(String id, String typeId) {
-        return new GlyphSpec(id, typeId, point(0, 0), Direction.NORTH);
+    static GlyphSpec glyph(String typeId) {
+        return new GlyphSpec(typeId, point(0, 0), Direction.NORTH);
     }
 
-    static GlyphSpec glyph(String id, String typeId, long x, long y, Direction direction) {
-        return new GlyphSpec(id, typeId, point(x, y), direction);
+    static GlyphSpec glyph(String typeId, long x, long y, Direction direction) {
+        return new GlyphSpec(typeId, point(x, y), direction);
     }
 
     static SimulationPlan glyphPlan(List<GlyphSpec> glyphs) {

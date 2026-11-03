@@ -2,7 +2,7 @@ package io.dev.aae;
 
 import java.util.Objects;
 
-/** 单个指令带驱动机构的不可变定义；按计划中的声明顺序定位，不设置 ID。 */
+/** 单个指令带驱动机构的不可变定义；按计划中的声明顺序定位。 */
 public record MechanismSpec(
         GridPoint initialPosition,
         Direction initialDirection,

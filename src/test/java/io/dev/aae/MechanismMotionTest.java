@@ -83,9 +83,7 @@ class MechanismMotionTest {
                 Direction.EAST,
                 2,
                 InstructionTape.once("fws"));
-        InputSpec input = InputSpec.of(
-                "in",
-                new AtomPlacement(new GridPoint(2, 0), sampleAtom()),
+        InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(2, 0), sampleAtom()),
                 new AtomPlacement(new GridPoint(10, 10), blockerAtom()));
         OrthogonalSimulator simulator = new OrthogonalSimulator(
                 new SimulationPlan(List.of(piston), List.of(input), List.of(), 1));
@@ -119,9 +117,7 @@ class MechanismMotionTest {
                 new GridPoint(0, 1),
                 new GridPoint(1, 0),
                 new GridPoint(0, -1));
-        InputSpec input = InputSpec.of(
-                "in",
-                new AtomPlacement(new GridPoint(0, 0), grabbed),
+        InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(0, 0), grabbed),
                 new AtomPlacement(new GridPoint(-1, 0), attached));
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
                 List.of(arm), List.of(track), List.of(input), List.of(), 1));
@@ -149,7 +145,7 @@ class MechanismMotionTest {
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
                 List.of(arm),
                 List.of(track),
-                List.of(InputSpec.single("in", atomPosition, sampleAtom())),
+                List.of(InputSpec.single(atomPosition, sampleAtom())),
                 List.of(),
                 1));
         simulator.init();
@@ -187,9 +183,7 @@ class MechanismMotionTest {
                 Direction.EAST,
                 1,
                 InstructionTape.once("fw"));
-        InputSpec input = InputSpec.of(
-                "in",
-                new AtomPlacement(new GridPoint(1, 0), sampleAtom()),
+        InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(1, 0), sampleAtom()),
                 new AtomPlacement(new GridPoint(2, 0), blockerAtom()));
         OrthogonalSimulator simulator = new OrthogonalSimulator(
                 new SimulationPlan(List.of(piston), List.of(input), List.of(), 1));
@@ -225,7 +219,7 @@ class MechanismMotionTest {
                 InstructionTape.once("fw"));
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
                 List.of(east, west),
-                List.of(InputSpec.single("in", new GridPoint(1, 0), sampleAtom())),
+                List.of(InputSpec.single(new GridPoint(1, 0), sampleAtom())),
                 List.of(),
                 1));
         simulator.init();
@@ -270,9 +264,7 @@ class MechanismMotionTest {
                 Direction.EAST,
                 1,
                 InstructionTape.once("fwe"));
-        InputSpec input = InputSpec.of(
-                "in",
-                new AtomPlacement(new GridPoint(1, 0), grabbed),
+        InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(1, 0), grabbed),
                 new AtomPlacement(new GridPoint(1, 1), attached),
                 new AtomPlacement(new GridPoint(10, 10), Atom.of((byte) 9)));
         OrthogonalSimulator simulator = new OrthogonalSimulator(
@@ -314,9 +306,7 @@ class MechanismMotionTest {
                 Direction.NORTH,
                 2,
                 InstructionTape.once("f" + pivotInstruction));
-        InputSpec input = InputSpec.of(
-                "in",
-                new AtomPlacement(new GridPoint(0, 0), grabbed),
+        InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(0, 0), grabbed),
                 new AtomPlacement(new GridPoint(1, 0), attached));
         OrthogonalSimulator simulator = new OrthogonalSimulator(
                 new SimulationPlan(List.of(arm), List.of(input), List.of(), 1));
@@ -331,9 +321,7 @@ class MechanismMotionTest {
                 Direction.EAST,
                 length,
                 InstructionTape.once("f" + instruction));
-        InputSpec input = InputSpec.of(
-                "in",
-                new AtomPlacement(new GridPoint(length, 0), sampleAtom()),
+        InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(length, 0), sampleAtom()),
                 new AtomPlacement(new GridPoint(10, 10), blockerAtom()));
         OrthogonalSimulator simulator = new OrthogonalSimulator(
                 new SimulationPlan(List.of(piston), List.of(input), List.of(), 1));

@@ -360,9 +360,9 @@ public final class OrthogonalSimulator {
         return glyphs.pendingSpawns().size();
     }
 
-    /** 指定符文当前的实例状态；没有该符文时抛出 {@link IllegalArgumentException}。 */
-    public Object glyphState(String glyphId) {
-        return glyphs.state(glyphId);
+    /** 按计划声明下标（从 0 开始）读取符文状态；越界抛出 {@link IndexOutOfBoundsException}。 */
+    public Object glyphState(int glyphIndex) {
+        return glyphs.state(glyphIndex);
     }
 
     /** 棋盘上指定格点的原子；没有原子时返回 {@code null}。 */
@@ -411,19 +411,14 @@ public final class OrthogonalSimulator {
         return List.copyOf(heldByMechanism.get(Objects.checkIndex(index, mechanismCount())));
     }
 
-    /** 指定输出的累计消费次数。 */
-    public long outputCount(String outputId) {
-        return outputCounts[plan.indexOfOutput(outputId)];
+    /** 按计划声明下标（从 0 开始）读取输出计数；越界抛出 {@link IndexOutOfBoundsException}。 */
+    public long outputCount(int outputIndex) {
+        return outputCounts[Objects.checkIndex(outputIndex, outputCounts.length)];
     }
 
-    /** 全部输出的累计消费次数。 */
-    public Map<String, Long> outputCounts() {
-        Map<String, Long> counts = new LinkedHashMap<>();
-        List<OutputSpec> outputs = plan.outputs();
-        for (int i = 0; i < outputCounts.length; i++) {
-            counts.put(outputs.get(i).id(), outputCounts[i]);
-        }
-        return Collections.unmodifiableMap(counts);
+    /** 全部输出计数的独立快照，按计划 outputs() 声明顺序；修改返回数组不影响模拟器。 */
+    public long[] outputCounts() {
+        return Arrays.copyOf(outputCounts, outputCounts.length);
     }
 
     /** 每个输出必须达到的消费次数。 */

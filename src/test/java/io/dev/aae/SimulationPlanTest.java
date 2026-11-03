@@ -22,20 +22,35 @@ class SimulationPlanTest {
     }
 
     @Test
-    void inputAndOutputIdsMustBeUniqueWithinTheirKinds() {
-        InputSpec input = InputSpec.single("same", new GridPoint(0, 0), sampleAtom());
-        var inputFailure = assertThrows(
-                IllegalArgumentException.class,
-                () -> new SimulationPlan(List.of(), List.of(input,
-                        InputSpec.single("same", new GridPoint(1, 0), sampleAtom())), List.of(), 1));
-        assertEquals("duplicate input id: same", inputFailure.getMessage());
-
-        OutputSpec output = OutputSpec.single("same", new GridPoint(0, 0), sampleAtom());
-        var outputFailure = assertThrows(
-                IllegalArgumentException.class,
-                () -> new SimulationPlan(List.of(), List.of(), List.of(output,
-                        OutputSpec.single("same", new GridPoint(1, 0), sampleAtom())), 1));
-        assertEquals("duplicate output id: same", outputFailure.getMessage());
+    void inputsOutputsAndGlyphsKeepDeclarationOrderInImmutableListSnapshots() {
+        List<InputSpec> inputs = new ArrayList<>(List.of(
+                InputSpec.single(new GridPoint(1, 0), sampleAtom()),
+                InputSpec.single(new GridPoint(0, 0), sampleAtom())));
+        List<OutputSpec> outputs = new ArrayList<>(List.of(
+                OutputSpec.single(new GridPoint(3, 0), sampleAtom()),
+                OutputSpec.single(new GridPoint(2, 0), sampleAtom())));
+        String type = "test.plan:ordered";
+        List<GlyphSpec> glyphs = new ArrayList<>(List.of(
+                new GlyphSpec(type, new GridPoint(5, 0)),
+                new GlyphSpec(type, new GridPoint(4, 0))));
+        try (var handle = GlyphRegistry.global().register(GlyphDefinition.single(type, context -> {}))) {
+            SimulationPlan plan = new SimulationPlan(List.of(), List.of(), inputs, outputs, glyphs, 1);
+            assertEquals(inputs, plan.inputs());
+            assertEquals(outputs, plan.outputs());
+            assertEquals(glyphs, plan.glyphs());
+            inputs.clear();
+            outputs.clear();
+            glyphs.clear();
+            assertEquals(new GridPoint(1, 0), plan.inputs().get(0).atoms().get(0).position());
+            assertEquals(new GridPoint(3, 0), plan.outputs().get(0).anchor());
+            assertEquals(new GridPoint(5, 0), plan.glyphs().get(0).position());
+            assertEquals(2, plan.inputs().size());
+            assertEquals(2, plan.outputs().size());
+            assertEquals(2, plan.glyphs().size());
+            assertThrows(UnsupportedOperationException.class, () -> plan.inputs().clear());
+            assertThrows(UnsupportedOperationException.class, () -> plan.outputs().clear());
+            assertThrows(UnsupportedOperationException.class, () -> plan.glyphs().clear());
+        }
     }
 
     @Test
@@ -64,13 +79,11 @@ class SimulationPlanTest {
 
     @Test
     void inputAndOutputTemplatesMustBeNonEmptyWithUniquePositions() {
-        assertThrows(IllegalArgumentException.class, () -> InputSpec.of("in"));
-        assertThrows(IllegalArgumentException.class, () -> OutputSpec.of("out"));
+        assertThrows(IllegalArgumentException.class, () -> InputSpec.of());
+        assertThrows(IllegalArgumentException.class, () -> OutputSpec.of());
         assertThrows(
                 IllegalArgumentException.class,
-                () -> InputSpec.of(
-                        "in",
-                        new AtomPlacement(new GridPoint(0, 0), sampleAtom()),
+                () -> InputSpec.of(new AtomPlacement(new GridPoint(0, 0), sampleAtom()),
                         new AtomPlacement(new GridPoint(0, 0), otherAtom())));
     }
 

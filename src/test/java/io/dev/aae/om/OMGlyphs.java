@@ -55,7 +55,7 @@ public final class OMGlyphs {
     }
 
     public static GlyphSpec bondingSpec(long x, long y, Direction direction) {
-        return new GlyphSpec(BONDING_ID, BONDING_ID, new GridPoint(x, y), direction);
+        return new GlyphSpec(BONDING_ID, new GridPoint(x, y), direction);
     }
 
     /**
@@ -74,7 +74,7 @@ public final class OMGlyphs {
     }
 
     public static GlyphSpec unbondingSpec(long x, long y, Direction direction) {
-        return new GlyphSpec(UNBONDING_ID, UNBONDING_ID, new GridPoint(x, y), direction);
+        return new GlyphSpec(UNBONDING_ID, new GridPoint(x, y), direction);
     }
 
     /**
@@ -90,7 +90,7 @@ public final class OMGlyphs {
     }
 
     public static GlyphSpec calcificationSpec(long x, long y) {
-        return new GlyphSpec(CALCIFICATION_ID, CALCIFICATION_ID, new GridPoint(x, y));
+        return new GlyphSpec(CALCIFICATION_ID, new GridPoint(x, y));
     }
 
     private static void bondPair(GlyphContext context) {

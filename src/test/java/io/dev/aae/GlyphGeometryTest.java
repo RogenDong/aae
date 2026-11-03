@@ -29,7 +29,7 @@ class GlyphGeometryTest {
         byte bondType = 1;
         AtomicInteger calls = new AtomicInteger();
         String typeId = "test.geometry:" + direction + "-" + System.nanoTime();
-        GlyphSpec spec = new GlyphSpec("geometry", typeId, anchor, direction);
+        GlyphSpec spec = new GlyphSpec(typeId, anchor, direction);
         GlyphDefinition<Void> definition = GlyphDefinition.of(
                 typeId,
                 List.of(new GridPoint(0, 0), localInput, localOutput,
@@ -66,7 +66,7 @@ class GlyphGeometryTest {
             assertEquals(List.of(anchor, worldInput, worldOutput, worldInput.translate(Direction.EAST)), plan.glyphPlaceholderCells());
 
             GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
-                    List.of(InputSpec.of("initial", source, neighbor)), List.of(spec));
+                    List.of(InputSpec.of(source, neighbor)), List.of(spec));
             simulator.step();
 
             assertNotNull(simulator.atomAt(worldOutput));
@@ -80,7 +80,7 @@ class GlyphGeometryTest {
             assertEquals(1, calls.get());
 
             GlyphRuntimeFixture occupiedOutput = new GlyphRuntimeFixture(
-                    List.of(InputSpec.of("in", source, neighbor,
+                    List.of(InputSpec.of(source, neighbor,
                             new AtomPlacement(worldOutput, Atom.of((byte) 4)))), List.of(spec));
             occupiedOutput.step();
             assertEquals((byte) 4, occupiedOutput.atomAt(worldOutput).type());

@@ -1,9 +1,12 @@
 package io.dev.aae;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -28,14 +31,14 @@ class OrthogonalSimulatorLifecycleTest {
         assertEquals(new GridPoint(1, 1), simulator.mechanism(0).position());
         assertEquals(1, simulator.grabsAt(new GridPoint(1, 0)));
         assertEquals(1, simulator.heldEntities(0).size());
-        assertEquals(0, simulator.outputCount("out"));
+        assertEquals(0, simulator.outputCount(0));
         simulator.step();
         assertTrue(simulator.heldEntities(0).isEmpty());
         assertNull(simulator.atomAt(new GridPoint(1, 0)));
-        assertEquals(1, simulator.outputCount("out"));
+        assertEquals(1, simulator.outputCount(0));
         assertFalse(simulator.isComplete());
         simulator.run(5);
-        assertEquals(2, simulator.outputCount("out"));
+        assertEquals(2, simulator.outputCount(0));
         assertTrue(simulator.isComplete());
         assertEquals(9, simulator.cycle());
     }
@@ -48,10 +51,10 @@ class OrthogonalSimulatorLifecycleTest {
         String type = "test.lifecycle:observe-halves";
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.single(type, context -> {
             if (context.cycle() == 2) inputIds.add(observed[0].entityAt(new GridPoint(0, 0)));
-            if (context.cycle() == 3) outputCounts.add(observed[0].outputCount("out"));
+            if (context.cycle() == 3) outputCounts.add(observed[0].outputCount(0));
         }))) {
             observed[0] = new OrthogonalSimulator(shuttlePlan(1,
-                    List.of(new GlyphSpec("observer", type, new GridPoint(9, 9)))));
+                    List.of(new GlyphSpec(type, new GridPoint(9, 9)))));
             observed[0].run(4);
             assertEquals(2, inputIds.size());
             assertNotEquals(inputIds.get(0), inputIds.get(1));
@@ -68,7 +71,7 @@ class OrthogonalSimulatorLifecycleTest {
         // 挡在输入占位上，输入不能再生产。
         SimulationPlan plan = new SimulationPlan(
                 List.of(mechanism(1, 0, Direction.WEST, ".fr")),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
+                List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())),
                 List.of(),
                 1);
 
@@ -84,9 +87,7 @@ class OrthogonalSimulatorLifecycleTest {
     void inputProducesMultiatomBondedMolecules() {
         Atom eastBonded = Atom.of((byte) 1).withBond(Direction.EAST, (byte) 2);
         Atom westBonded = Atom.of((byte) 5).withBond(Direction.WEST, (byte) 2);
-        InputSpec input = InputSpec.of(
-                "in",
-                new AtomPlacement(new GridPoint(0, 0), eastBonded),
+        InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(0, 0), eastBonded),
                 new AtomPlacement(new GridPoint(1, 0), westBonded));
 
         OrthogonalSimulator simulator = new OrthogonalSimulator(
@@ -119,14 +120,14 @@ class OrthogonalSimulatorLifecycleTest {
         missingBond.run(5);
 
         // 匹配分子在释放后消费；输入处保留补充生产的另一份模板。
-        assertEquals(1, matching.outputCount("out"));
+        assertEquals(1, matching.outputCount(0));
         assertEquals(2, matching.boardSize());
         assertNull(matching.atomAt(new GridPoint(-2, 0)));
         assertNull(matching.atomAt(new GridPoint(-1, 0)));
-        assertEquals(0, wrongType.outputCount("out"));
+        assertEquals(0, wrongType.outputCount(0));
         assertEquals(4, wrongType.boardSize());
         assertEquals(mismatchedWest, wrongType.atomAt(new GridPoint(-1, 0)));
-        assertEquals(0, missingBond.outputCount("out"));
+        assertEquals(0, missingBond.outputCount(0));
         assertEquals(4, missingBond.boardSize());
         assertEquals(Atom.of((byte) 1), missingBond.atomAt(new GridPoint(-2, 0)));
         assertEquals(Atom.of((byte) 5), missingBond.atomAt(new GridPoint(-1, 0)));
@@ -136,27 +137,70 @@ class OrthogonalSimulatorLifecycleTest {
     void completionRequiresEveryOutputToReachTheTarget() {
         OrthogonalSimulator simulator = completionSimulator(2);
         simulator.run(9);
-        assertEquals(2, simulator.outputCount("out-a"));
-        assertEquals(1, simulator.outputCount("out-b"));
+        assertEquals(2, simulator.outputCount(0));
+        assertEquals(1, simulator.outputCount(1));
+        long[] snapshot = simulator.outputCounts();
+        assertArrayEquals(new long[] {2, 1}, snapshot);
+        long[] modified = simulator.outputCounts();
+        modified[0] = 999;
+        assertEquals(2, simulator.outputCount(0));
         assertFalse(simulator.isComplete());
         simulator.run(2);
-        assertEquals(2, simulator.outputCount("out-b"));
+        assertEquals(2, simulator.outputCount(1));
         assertTrue(simulator.isComplete());
         assertEquals(2, simulator.targetOutputs());
+        assertArrayEquals(new long[] {2, 2}, simulator.outputCounts());
+        simulator.reset();
+        assertArrayEquals(new long[2], simulator.outputCounts());
+        assertArrayEquals(new long[] {2, 1}, snapshot);
 
         OrthogonalSimulator strict = completionSimulator(3);
         strict.run(14);
-        assertEquals(3, strict.outputCount("out-a"));
-        assertEquals(2, strict.outputCount("out-b"));
+        assertEquals(3, strict.outputCount(0));
+        assertEquals(2, strict.outputCount(1));
         assertFalse(strict.isComplete());
         strict.run(3);
-        assertEquals(3, strict.outputCount("out-b"));
+        assertEquals(3, strict.outputCount(1));
         assertTrue(strict.isComplete());
     }
 
     @Test
     void planWithoutOutputsIsNeverComplete() {
-        assertFalse(new OrthogonalSimulator(SimulationPlan.of()).isComplete());
+        var simulator = new OrthogonalSimulator(SimulationPlan.of());
+        assertFalse(simulator.isComplete());
+        assertArrayEquals(new long[0], simulator.outputCounts());
+    }
+
+    @Test
+    void outputCountsRestoreTheirDeclarationSlotsWhenACycleRollsBack() {
+        String type = "test.lifecycle:output-rollback";
+        RuntimeException failure = new IllegalStateException("after first-half consumption");
+        OrthogonalSimulator[] observed = new OrthogonalSimulator[1];
+        try (var handle = GlyphRegistry.global().register(GlyphDefinition.single(type, context -> {
+            if (context.cycle() == 4 && context.phase().isSecondHalf()) {
+                assertArrayEquals(new long[] {1, 1}, observed[0].outputCounts());
+                throw failure;
+            }
+        }))) {
+            SimulationPlan base = completionSimulator(2).plan();
+            var simulator = new OrthogonalSimulator(new SimulationPlan(base.mechanisms(), base.tracks(),
+                    base.inputs(), base.outputs(), List.of(new GlyphSpec(type, new GridPoint(20, 20))), 2));
+            observed[0] = simulator;
+            simulator.run(4);
+            assertArrayEquals(new long[] {1, 0}, simulator.outputCounts());
+            assertSame(failure, assertThrows(RuntimeException.class, simulator::step));
+            assertTrue(simulator.isHalted());
+            assertArrayEquals(new long[] {1, 0}, simulator.outputCounts());
+        }
+    }
+
+    @Test
+    void outputCountRejectsIndexesOutsideEmptyAndNonemptyLists() {
+        for (var simulator : List.of(new OrthogonalSimulator(SimulationPlan.of()), completionSimulator(1))) {
+            assertThrows(IndexOutOfBoundsException.class, () -> simulator.outputCount(-1));
+            assertThrows(IndexOutOfBoundsException.class,
+                    () -> simulator.outputCount(simulator.plan().outputs().size()));
+        }
     }
 
     // ---------- 抓取、释放与携带 ----------
@@ -167,9 +211,7 @@ class OrthogonalSimulatorLifecycleTest {
         Atom westBonded = Atom.of((byte) 5).withBond(Direction.WEST, (byte) 2);
         SimulationPlan plan = new SimulationPlan(
                 List.of(mechanism(0, 1, Direction.NORTH, ".fd")),
-                List.of(InputSpec.of(
-                        "in",
-                        new AtomPlacement(new GridPoint(0, 0), eastBonded),
+                List.of(InputSpec.of(new AtomPlacement(new GridPoint(0, 0), eastBonded),
                         new AtomPlacement(new GridPoint(1, 0), westBonded))),
                 List.of(),
                 1);
@@ -193,7 +235,7 @@ class OrthogonalSimulatorLifecycleTest {
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
                 List.of(new MechanismSpec(new GridPoint(1, 0), Direction.WEST,
                         InstructionTape.once("rffrr"))),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
+                List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())),
                 List.of(),
                 1));
 
@@ -225,8 +267,8 @@ class OrthogonalSimulatorLifecycleTest {
                         track(1, 1, 2, 1),
                         track(3, -1, 2, -1)),
                 List.of(
-                        InputSpec.single("in-a", new GridPoint(1, 0), sampleAtom()),
-                        InputSpec.single("in-b", new GridPoint(3, 0), otherAtom())),
+                        InputSpec.single(new GridPoint(1, 0), sampleAtom()),
+                        InputSpec.single(new GridPoint(3, 0), otherAtom())),
                 List.of(),
                 1);
 
@@ -248,8 +290,8 @@ class OrthogonalSimulatorLifecycleTest {
                 List.of(mechanism(1, 1, Direction.NORTH, ".fg")),
                 List.of(track(1, 1, 2, 1)),
                 List.of(
-                        InputSpec.single("in-a", new GridPoint(1, 0), sampleAtom()),
-                        InputSpec.single("in-b", new GridPoint(2, 0), otherAtom())),
+                        InputSpec.single(new GridPoint(1, 0), sampleAtom()),
+                        InputSpec.single(new GridPoint(2, 0), otherAtom())),
                 List.of(),
                 1);
 
@@ -283,7 +325,7 @@ class OrthogonalSimulatorLifecycleTest {
     void boardQueriesReflectTheAtomicState() {
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
                 List.of(),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
+                List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())),
                 List.of(),
                 1));
 
@@ -309,11 +351,9 @@ class OrthogonalSimulatorLifecycleTest {
                 List.of(mechanism(0, 1, Direction.NORTH, ".fggr"),
                         mechanism(1, -1, Direction.SOUTH, ".fggr")),
                 List.of(track(0, 1, -1, 1, -2, 1), track(1, -1, 0, -1, -1, -1)),
-                List.of(InputSpec.of("in",
-                        new AtomPlacement(new GridPoint(0, 0), inputAtoms.get(0)),
+                List.of(InputSpec.of(new AtomPlacement(new GridPoint(0, 0), inputAtoms.get(0)),
                         new AtomPlacement(new GridPoint(1, 0), inputAtoms.get(1)))),
-                List.of(OutputSpec.of("out",
-                        new AtomPlacement(new GridPoint(-2, 0), outputAtoms.get(0)),
+                List.of(OutputSpec.of(new AtomPlacement(new GridPoint(-2, 0), outputAtoms.get(0)),
                         new AtomPlacement(new GridPoint(-1, 0), outputAtoms.get(1)))), 1);
         return new OrthogonalSimulator(plan);
     }
@@ -321,8 +361,8 @@ class OrthogonalSimulatorLifecycleTest {
     private static SimulationPlan shuttlePlan(long target, List<GlyphSpec> glyphs) {
         return new SimulationPlan(List.of(mechanism(0, 1, Direction.NORTH, ".fgrt")),
                 List.of(track(0, 1, 1, 1)),
-                List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
-                List.of(OutputSpec.single("out", new GridPoint(1, 0), sampleAtom())), glyphs, target);
+                List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())),
+                List.of(OutputSpec.single(new GridPoint(1, 0), sampleAtom())), glyphs, target);
     }
 
     private static OrthogonalSimulator completionSimulator(long target) {
@@ -330,10 +370,10 @@ class OrthogonalSimulatorLifecycleTest {
                 List.of(mechanism(0, 1, Direction.NORTH, ".fgrt"),
                         mechanism(5, 6, Direction.NORTH, "..fgrt")),
                 List.of(track(0, 1, 1, 1), track(5, 6, 6, 6)),
-                List.of(InputSpec.single("in-a", new GridPoint(0, 0), sampleAtom()),
-                        InputSpec.single("in-b", new GridPoint(5, 5), otherAtom())),
-                List.of(OutputSpec.single("out-a", new GridPoint(1, 0), sampleAtom()),
-                        OutputSpec.single("out-b", new GridPoint(6, 5), otherAtom())), target));
+                List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom()),
+                        InputSpec.single(new GridPoint(5, 5), otherAtom())),
+                List.of(OutputSpec.single(new GridPoint(1, 0), sampleAtom()),
+                        OutputSpec.single(new GridPoint(6, 5), otherAtom())), target));
     }
 
     private static MechanismSpec mechanism(
