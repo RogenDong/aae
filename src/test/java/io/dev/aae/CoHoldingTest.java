@@ -16,8 +16,8 @@ class CoHoldingTest {
     @CsvSource({"f.,f.", "f.,.f"})
     void distinctBasesCanGrabTheSameMoleculeTogetherOrInSequence(String first, String second) {
         OrthogonalSimulator simulator = simulator(
-                List.of(arm("first", -1, 0, Direction.EAST, 1, first),
-                        arm("second", 0, 1, Direction.NORTH, 1, second)), List.of(),
+                List.of(arm(-1, 0, Direction.EAST, 1, first),
+                        arm(0, 1, Direction.NORTH, 1, second)), List.of(),
                 InputSpec.single("in", ORIGIN, ATOM));
 
         simulator.run(2);
@@ -25,10 +25,10 @@ class CoHoldingTest {
         assertFalse(simulator.isHalted());
         assertTrue(simulator.warnings().isEmpty());
         assertEquals(2, simulator.grabsAt(ORIGIN));
-        assertEquals(simulator.heldEntities("first"), simulator.heldEntities("second"));
-        assertEquals(1, simulator.heldEntities("first").size());
-        assertEquals(ORIGIN, simulator.mechanism("first").grabPosition());
-        assertEquals(ORIGIN, simulator.mechanism("second").grabPosition());
+        assertEquals(simulator.heldEntities(0), simulator.heldEntities(1));
+        assertEquals(1, simulator.heldEntities(0).size());
+        assertEquals(ORIGIN, simulator.mechanism(0).grabPosition());
+        assertEquals(ORIGIN, simulator.mechanism(1).grabPosition());
     }
 
     @ParameterizedTest
@@ -40,8 +40,8 @@ class CoHoldingTest {
                 ? List.of(TrackSpec.orthogonal(new GridPoint(-1, stationaryLength), stationaryBase))
                 : List.of();
         OrthogonalSimulator simulator = simulator(
-                List.of(arm("piston", -1, 0, Direction.EAST, 1, "fw"),
-                        arm("stationary", 0, stationaryLength, Direction.NORTH, stationaryLength,
+                List.of(arm(-1, 0, Direction.EAST, 1, "fw"),
+                        arm(0, stationaryLength, Direction.NORTH, stationaryLength,
                                 "f" + instruction)), tracks, InputSpec.single("in", ORIGIN, ATOM));
         simulator.step();
         assertFalse(simulator.isHalted());
@@ -54,9 +54,11 @@ class CoHoldingTest {
         assertEquals(1, simulator.warnings().size());
         assertTrue(simulator.warnings().get(0).contains("incompatible intents"));
         assertTrue(simulator.warnings().get(0).contains("STAY"));
-        assertEquals(1, simulator.mechanism("piston").length());
-        assertEquals(stationaryLength, simulator.mechanism("stationary").length());
-        assertEquals(stationaryBase, simulator.mechanism("stationary").position());
+        assertTrue(simulator.warnings().get(0).contains("from mechanism[0]"));
+        assertTrue(simulator.warnings().get(0).contains("from mechanism[1]"));
+        assertEquals(1, simulator.mechanism(0).length());
+        assertEquals(stationaryLength, simulator.mechanism(1).length());
+        assertEquals(stationaryBase, simulator.mechanism(1).position());
         assertEquals(entity, simulator.entityAt(ORIGIN));
         assertEquals(2, simulator.grabsAt(ORIGIN));
         assertNull(simulator.atomAt(new GridPoint(1, 0)));
@@ -65,8 +67,8 @@ class CoHoldingTest {
     @Test
     void stationaryTrackEndpointBlocksAnotherHoldersTranslation() {
         OrthogonalSimulator simulator = simulator(
-                List.of(arm("endpoint", 0, 1, Direction.NORTH, 1, "fg"),
-                        arm("moving", -1, 0, Direction.EAST, 1, "fg")),
+                List.of(arm(0, 1, Direction.NORTH, 1, "fg"),
+                        arm(-1, 0, Direction.EAST, 1, "fg")),
                 List.of(TrackSpec.orthogonal(new GridPoint(-1, 1), new GridPoint(0, 1)),
                         TrackSpec.orthogonal(new GridPoint(-1, 0), new GridPoint(-2, 0))),
                 InputSpec.single("in", ORIGIN, ATOM));
@@ -76,8 +78,8 @@ class CoHoldingTest {
 
         assertTrue(simulator.isHalted());
         assertTrue(simulator.warnings().get(0).contains("STAY"));
-        assertEquals(new GridPoint(-1, 0), simulator.mechanism("moving").position());
-        assertEquals(new GridPoint(0, 1), simulator.mechanism("endpoint").position());
+        assertEquals(new GridPoint(-1, 0), simulator.mechanism(1).position());
+        assertEquals(new GridPoint(0, 1), simulator.mechanism(0).position());
         assertEquals(ATOM, simulator.atomAt(ORIGIN));
         assertEquals(2, simulator.grabsAt(ORIGIN));
     }
@@ -85,8 +87,8 @@ class CoHoldingTest {
     @Test
     void newlyJoinedHolderBlocksRotationAndItsGrabIsRolledBack() {
         OrthogonalSimulator simulator = simulator(
-                List.of(arm("carrier", 1, 0, Direction.EAST, 1, ".fd"),
-                        arm("joiner", 3, 0, Direction.WEST, 1, "..f")), List.of(),
+                List.of(arm(1, 0, Direction.EAST, 1, ".fd"),
+                        arm(3, 0, Direction.WEST, 1, "..f")), List.of(),
                 InputSpec.single("in", new GridPoint(2, 0), ATOM));
         simulator.run(2);
         assertEquals(1, simulator.grabsAt(new GridPoint(2, 0)));
@@ -96,19 +98,19 @@ class CoHoldingTest {
         assertTrue(simulator.isHalted());
         assertEquals(3, simulator.cycle());
         assertTrue(simulator.warnings().get(0).contains("STAY"));
-        assertEquals(Direction.EAST, simulator.mechanism("carrier").direction());
+        assertEquals(Direction.EAST, simulator.mechanism(0).direction());
         assertEquals(ATOM, simulator.atomAt(new GridPoint(2, 0)));
         assertNull(simulator.atomAt(new GridPoint(1, 1)));
         assertEquals(1, simulator.grabsAt(new GridPoint(2, 0)));
-        assertTrue(simulator.heldEntities("joiner").isEmpty());
+        assertTrue(simulator.heldEntities(1).isEmpty());
     }
 
     @ParameterizedTest
     @CsvSource({"g,-1,0", "d,1,1"})
     void releasingCoHolderAllowsTranslationOrRotation(String motion, long x, long y) {
         OrthogonalSimulator simulator = simulator(
-                List.of(arm("dropper", 1, 0, Direction.WEST, 1, "fr"),
-                        arm("carrier", 0, 1, Direction.NORTH, 1, "f" + motion)),
+                List.of(arm(1, 0, Direction.WEST, 1, "fr"),
+                        arm(0, 1, Direction.NORTH, 1, "f" + motion)),
                 List.of(TrackSpec.orthogonal(new GridPoint(0, 1), new GridPoint(-1, 1))),
                 InputSpec.single("in", ORIGIN, ATOM));
         simulator.step();
@@ -120,10 +122,10 @@ class CoHoldingTest {
         assertFalse(simulator.isHalted());
         assertEquals(entity, simulator.entityAt(destination));
         assertEquals(ATOM, simulator.atomAt(destination));
-        assertEquals(destination, simulator.mechanism("carrier").grabPosition());
+        assertEquals(destination, simulator.mechanism(1).grabPosition());
         assertEquals(1, simulator.grabsAt(destination));
-        assertTrue(simulator.heldEntities("dropper").isEmpty());
-        assertEquals(List.of(entity), simulator.heldEntities("carrier"));
+        assertTrue(simulator.heldEntities(0).isEmpty());
+        assertEquals(List.of(entity), simulator.heldEntities(1));
     }
 
     @Test
@@ -131,8 +133,8 @@ class CoHoldingTest {
         Atom left = ATOM.withBond(Direction.EAST, (byte) 2);
         Atom right = Atom.of((byte) 3).withBond(Direction.WEST, (byte) 2);
         OrthogonalSimulator simulator = simulator(
-                List.of(arm("left", 0, 1, Direction.NORTH, 1, "fg"),
-                        arm("right", 1, -1, Direction.SOUTH, 1, "fg")),
+                List.of(arm(0, 1, Direction.NORTH, 1, "fg"),
+                        arm(1, -1, Direction.SOUTH, 1, "fg")),
                 List.of(TrackSpec.orthogonal(new GridPoint(0, 1), new GridPoint(-1, 1)),
                         TrackSpec.orthogonal(new GridPoint(1, -1), new GridPoint(0, -1))),
                 InputSpec.of("in", new AtomPlacement(ORIGIN, left),
@@ -141,8 +143,8 @@ class CoHoldingTest {
         simulator.run(2);
 
         assertFalse(simulator.isHalted());
-        assertEquals(new GridPoint(-1, 1), simulator.mechanism("left").position());
-        assertEquals(new GridPoint(0, -1), simulator.mechanism("right").position());
+        assertEquals(new GridPoint(-1, 1), simulator.mechanism(0).position());
+        assertEquals(new GridPoint(0, -1), simulator.mechanism(1).position());
         assertEquals(left, simulator.atomAt(new GridPoint(-1, 0)));
         assertEquals(right, simulator.atomAt(ORIGIN));
         assertEquals(2, simulator.boardSize());
@@ -153,8 +155,8 @@ class CoHoldingTest {
     @Test
     void identicalPivotsFromDistinctBasesRotateTheMoleculeOnlyOnce() {
         OrthogonalSimulator simulator = simulator(
-                List.of(arm("west", -1, 0, Direction.EAST, 1, "fe"),
-                        arm("south", 0, 1, Direction.NORTH, 1, "fe")), List.of(),
+                List.of(arm(-1, 0, Direction.EAST, 1, "fe"),
+                        arm(0, 1, Direction.NORTH, 1, "fe")), List.of(),
                 InputSpec.of("in", new AtomPlacement(ORIGIN, ATOM.withBond(Direction.NORTH, (byte) 2)),
                         new AtomPlacement(new GridPoint(0, -1),
                                 Atom.of((byte) 3).withBond(Direction.SOUTH, (byte) 2))));
@@ -169,18 +171,18 @@ class CoHoldingTest {
         assertEquals(2, simulator.boardSize());
         assertEquals(2, simulator.grabsAt(ORIGIN));
         assertEquals(2, simulator.grabsAt(new GridPoint(1, 0)));
-        assertEquals(ORIGIN, simulator.mechanism("west").grabPosition());
-        assertEquals(ORIGIN, simulator.mechanism("south").grabPosition());
+        assertEquals(ORIGIN, simulator.mechanism(0).grabPosition());
+        assertEquals(ORIGIN, simulator.mechanism(1).grabPosition());
     }
 
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void incompatibleTranslationsOrRotationsRollBackBothHolders(boolean rotation) {
         List<MechanismSpec> arms = rotation
-                ? List.of(arm("a", 0, 1, Direction.NORTH, 1, "fd"),
-                        arm("b", 0, -1, Direction.SOUTH, 1, "fa"))
-                : List.of(arm("a", 1, 0, Direction.WEST, 1, "fg"),
-                        arm("b", 0, -1, Direction.SOUTH, 1, "ft"));
+                ? List.of(arm(0, 1, Direction.NORTH, 1, "fd"),
+                        arm(0, -1, Direction.SOUTH, 1, "fa"))
+                : List.of(arm(1, 0, Direction.WEST, 1, "fg"),
+                        arm(0, -1, Direction.SOUTH, 1, "ft"));
         List<TrackSpec> tracks = rotation ? List.of()
                 : List.of(TrackSpec.orthogonal(new GridPoint(1, 0), new GridPoint(1, -1), new GridPoint(0, -1)));
         OrthogonalSimulator simulator = simulator(arms, tracks, InputSpec.single("in", ORIGIN, ATOM));
@@ -205,7 +207,7 @@ class CoHoldingTest {
         return simulator;
     }
 
-    private static MechanismSpec arm(String id, long x, long y, Direction direction, int length, String program) {
-        return new MechanismSpec(id, new GridPoint(x, y), direction, length, InstructionTape.once(program));
+    private static MechanismSpec arm(long x, long y, Direction direction, int length, String program) {
+        return new MechanismSpec(new GridPoint(x, y), direction, length, InstructionTape.once(program));
     }
 }

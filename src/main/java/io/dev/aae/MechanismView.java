@@ -4,30 +4,27 @@ import java.util.Objects;
 
 /** 机构的只读状态；{@code position} 表示基座格点。 */
 public record MechanismView(
-        String id,
         GridPoint position,
         Direction direction,
         int length,
         boolean grabbing) {
 
-    /** 兼容原有固定一格机构的观察值构造方式。 */
+    /** 使用默认长度一格。 */
     public MechanismView(
-            String id, GridPoint position, Direction direction, boolean grabbing) {
-        this(id, position, direction, MechanismSpec.MIN_LENGTH, grabbing);
+            GridPoint position, Direction direction, boolean grabbing) {
+        this(position, direction, MechanismSpec.MIN_LENGTH, grabbing);
     }
 
-    /** 允许调用方在原有参数顺序末尾补充长度。 */
+    /** 允许调用方在参数顺序末尾指定长度。 */
     public MechanismView(
-            String id,
             GridPoint position,
             Direction direction,
             boolean grabbing,
             int length) {
-        this(id, position, direction, length, grabbing);
+        this(position, direction, length, grabbing);
     }
 
     public MechanismView {
-        Objects.requireNonNull(id, "id");
         Objects.requireNonNull(position, "position");
         Objects.requireNonNull(direction, "direction");
         MechanismSpec.validateLength(length);

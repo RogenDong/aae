@@ -16,31 +16,30 @@ class MechanismMotionTest {
     void lengthIsValidatedAndLegacyConstructorsDefaultToOne() {
         InstructionTape tape = InstructionTape.empty();
         MechanismSpec legacySpec = new MechanismSpec(
-                "legacy", new GridPoint(0, 0), Direction.NORTH, tape);
+                new GridPoint(0, 0), Direction.NORTH, tape);
         MechanismView legacyView = new MechanismView(
-                "legacy", new GridPoint(0, 0), Direction.NORTH, false);
+                new GridPoint(0, 0), Direction.NORTH, false);
 
         assertEquals(1, legacySpec.length());
         assertEquals(1, legacyView.length());
         assertEquals(2, new MechanismSpec(
-                "two", new GridPoint(0, 0), Direction.NORTH, tape, 2).length());
+                new GridPoint(0, 0), Direction.NORTH, tape, 2).length());
         assertEquals(3, new MechanismView(
-                "three", new GridPoint(0, 0), Direction.NORTH, true, 3).length());
+                new GridPoint(0, 0), Direction.NORTH, true, 3).length());
 
         assertThrows(IllegalArgumentException.class, () -> new MechanismSpec(
-                "short", new GridPoint(0, 0), Direction.NORTH, 0, tape));
+                new GridPoint(0, 0), Direction.NORTH, 0, tape));
         assertThrows(IllegalArgumentException.class, () -> new MechanismSpec(
-                "long", new GridPoint(0, 0), Direction.NORTH, 4, tape));
+                new GridPoint(0, 0), Direction.NORTH, 4, tape));
         assertThrows(IllegalArgumentException.class, () -> new MechanismView(
-                "short", new GridPoint(0, 0), Direction.NORTH, 0, false));
+                new GridPoint(0, 0), Direction.NORTH, 0, false));
         assertThrows(IllegalArgumentException.class, () -> new MechanismView(
-                "long", new GridPoint(0, 0), Direction.NORTH, 4, false));
+                new GridPoint(0, 0), Direction.NORTH, 4, false));
     }
 
     @Test
     void pistonLengthChangesWithinBoundsAndResetRestoresIt() {
         OrthogonalSimulator simulator = simulator(new MechanismSpec(
-                "piston",
                 new GridPoint(4, 5),
                 Direction.WEST,
                 2,
@@ -64,16 +63,15 @@ class MechanismMotionTest {
     @Test
     void mechanismQueriesAndChecksumsIncludeLength() {
         MechanismSpec extended = new MechanismSpec(
-                "arm",
                 new GridPoint(0, 0),
                 Direction.NORTH,
                 2,
                 InstructionTape.empty());
         OrthogonalSimulator simulator = simulator(extended);
         OrthogonalSimulator legacyLength = simulator(new MechanismSpec(
-                "arm", new GridPoint(0, 0), Direction.NORTH, InstructionTape.empty()));
+                new GridPoint(0, 0), Direction.NORTH, InstructionTape.empty()));
 
-        assertEquals(2, simulator.mechanism("arm").length());
+        assertEquals(2, simulator.mechanism(0).length());
         assertEquals(2, simulator.mechanisms().get(0).length());
         assertNotEquals(legacyLength.checksum(), simulator.checksum());
     }
@@ -81,7 +79,6 @@ class MechanismMotionTest {
     @Test
     void pistonExtensionAndRetractionCarryTheGrabbedMolecule() {
         MechanismSpec piston = new MechanismSpec(
-                "piston",
                 new GridPoint(0, 0),
                 Direction.EAST,
                 2,
@@ -95,16 +92,16 @@ class MechanismMotionTest {
         simulator.init();
 
         simulator.step();
-        assertTrue(simulator.mechanism("piston").grabbing());
+        assertTrue(simulator.mechanism(0).grabbing());
         assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(2, 0)));
 
         simulator.step();
-        assertEquals(3, simulator.mechanism("piston").length());
+        assertEquals(3, simulator.mechanism(0).length());
         assertNull(simulator.atomAt(new GridPoint(2, 0)));
         assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(3, 0)));
 
         simulator.step();
-        assertEquals(2, simulator.mechanism("piston").length());
+        assertEquals(2, simulator.mechanism(0).length());
         assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(2, 0)));
         assertNull(simulator.atomAt(new GridPoint(3, 0)));
         assertFalse(simulator.isHalted());
@@ -115,7 +112,6 @@ class MechanismMotionTest {
         Atom grabbed = sampleAtom().withBond(Direction.WEST, (byte) 2);
         Atom attached = blockerAtom().withBond(Direction.EAST, (byte) 2);
         MechanismSpec arm = new MechanismSpec(
-                "arm",
                 new GridPoint(0, 1),
                 Direction.NORTH,
                 InstructionTape.once("fgg"));
@@ -133,8 +129,8 @@ class MechanismMotionTest {
 
         simulator.run(3);
 
-        assertEquals(new GridPoint(0, -1), simulator.mechanism("arm").position());
-        assertEquals(Direction.NORTH, simulator.mechanism("arm").direction());
+        assertEquals(new GridPoint(0, -1), simulator.mechanism(0).position());
+        assertEquals(Direction.NORTH, simulator.mechanism(0).direction());
         assertEquals((byte) 2, simulator.atomAt(new GridPoint(0, -2)).bondType(Direction.WEST));
         assertEquals((byte) 2, simulator.atomAt(new GridPoint(-1, -2)).bondType(Direction.EAST));
         assertEquals(1, simulator.grabsAt(new GridPoint(0, -2)));
@@ -147,7 +143,7 @@ class MechanismMotionTest {
         GridPoint base = new GridPoint(Long.MAX_VALUE - 1, 1);
         GridPoint atomPosition = new GridPoint(Long.MAX_VALUE, 1);
         MechanismSpec arm = new MechanismSpec(
-                "arm", base, Direction.EAST, InstructionTape.once("fg"));
+                base, Direction.EAST, InstructionTape.once("fg"));
         TrackSpec track = TrackSpec.diagonal(
                 base, new GridPoint(Long.MAX_VALUE, 0));
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
@@ -162,8 +158,8 @@ class MechanismMotionTest {
         assertThrows(ArithmeticException.class, simulator::step);
 
         assertEquals(1, simulator.cycle());
-        assertEquals(base, simulator.mechanism("arm").position());
-        assertTrue(simulator.mechanism("arm").grabbing());
+        assertEquals(base, simulator.mechanism(0).position());
+        assertTrue(simulator.mechanism(0).grabbing());
         assertEquals(sampleAtom(), simulator.atomAt(atomPosition));
         assertEquals(1, simulator.grabsAt(atomPosition));
     }
@@ -173,12 +169,12 @@ class MechanismMotionTest {
         OrthogonalSimulator maximum = boundarySimulator(3, 'w');
         OrthogonalSimulator minimum = boundarySimulator(1, 's');
 
-        assertEquals(3, maximum.mechanism("piston").length());
+        assertEquals(3, maximum.mechanism(0).length());
         assertEquals(sampleAtom(), maximum.atomAt(new GridPoint(3, 0)));
         assertEquals(1, maximum.grabsAt(new GridPoint(3, 0)));
         assertFalse(maximum.isHalted());
 
-        assertEquals(1, minimum.mechanism("piston").length());
+        assertEquals(1, minimum.mechanism(0).length());
         assertEquals(sampleAtom(), minimum.atomAt(new GridPoint(1, 0)));
         assertEquals(1, minimum.grabsAt(new GridPoint(1, 0)));
         assertFalse(minimum.isHalted());
@@ -187,7 +183,6 @@ class MechanismMotionTest {
     @Test
     void blockedExtensionDoesNotCommitLengthOrMoleculeMotion() {
         MechanismSpec piston = new MechanismSpec(
-                "piston",
                 new GridPoint(0, 0),
                 Direction.EAST,
                 1,
@@ -203,7 +198,7 @@ class MechanismMotionTest {
         simulator.step();
         assertFalse(simulator.isHalted());
         assertEquals(1, simulator.cycle());
-        assertTrue(simulator.mechanism("piston").grabbing());
+        assertTrue(simulator.mechanism(0).grabbing());
 
         // 第二个周期：目标格点仍被挡，运动冲突让整周期回滚并停机。
         simulator.step();
@@ -211,7 +206,7 @@ class MechanismMotionTest {
         assertTrue(simulator.isHalted());
         assertEquals(2, simulator.cycle());
         assertTrue(simulator.warnings().get(0).contains("already occupied by entity"));
-        assertEquals(1, simulator.mechanism("piston").length());
+        assertEquals(1, simulator.mechanism(0).length());
         assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 0)));
         assertEquals(blockerAtom(), simulator.atomAt(new GridPoint(2, 0)));
     }
@@ -219,13 +214,11 @@ class MechanismMotionTest {
     @Test
     void conflictingPistonMovesDoNotCommitEitherLength() {
         MechanismSpec east = new MechanismSpec(
-                "east",
                 new GridPoint(0, 0),
                 Direction.EAST,
                 1,
                 InstructionTape.once("fw"));
         MechanismSpec west = new MechanismSpec(
-                "west",
                 new GridPoint(2, 0),
                 Direction.WEST,
                 1,
@@ -248,8 +241,8 @@ class MechanismMotionTest {
         assertTrue(simulator.isHalted());
         assertEquals(2, simulator.cycle());
         assertTrue(simulator.warnings().get(0).contains("incompatible intents"));
-        assertEquals(1, simulator.mechanism("east").length());
-        assertEquals(1, simulator.mechanism("west").length());
+        assertEquals(1, simulator.mechanism(0).length());
+        assertEquals(1, simulator.mechanism(1).length());
         assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 0)));
         assertEquals(2, simulator.grabsAt(new GridPoint(1, 0)));
     }
@@ -273,7 +266,6 @@ class MechanismMotionTest {
         Atom grabbed = sampleAtom().withBond(Direction.SOUTH, (byte) 2);
         Atom attached = blockerAtom().withBond(Direction.NORTH, (byte) 2);
         MechanismSpec piston = new MechanismSpec(
-                "piston",
                 new GridPoint(0, 0),
                 Direction.EAST,
                 1,
@@ -289,7 +281,7 @@ class MechanismMotionTest {
 
         simulator.run(3);
 
-        MechanismView view = simulator.mechanism("piston");
+        MechanismView view = simulator.mechanism(0);
         assertEquals(2, view.length());
         assertEquals(new GridPoint(2, 0), view.grabPosition());
         assertEquals((byte) 2, simulator.atomAt(new GridPoint(2, 0)).bondType(Direction.WEST));
@@ -301,7 +293,6 @@ class MechanismMotionTest {
     @Test
     void pivotWithoutAGrabbedMoleculeIsANoOp() {
         OrthogonalSimulator simulator = simulator(new MechanismSpec(
-                "arm",
                 new GridPoint(7, -4),
                 Direction.SOUTH,
                 3,
@@ -311,15 +302,14 @@ class MechanismMotionTest {
 
         assertEquals(
                 new MechanismView(
-                        "arm", new GridPoint(7, -4), Direction.SOUTH, 3, false),
-                simulator.mechanism("arm"));
+                        new GridPoint(7, -4), Direction.SOUTH, 3, false),
+                simulator.mechanism(0));
     }
 
     private static OrthogonalSimulator pivotSimulator(char pivotInstruction) {
         Atom grabbed = sampleAtom().withBond(Direction.EAST, (byte) 2);
         Atom attached = blockerAtom().withBond(Direction.WEST, (byte) 2);
         MechanismSpec arm = new MechanismSpec(
-                "arm",
                 new GridPoint(0, 2),
                 Direction.NORTH,
                 2,
@@ -337,7 +327,6 @@ class MechanismMotionTest {
 
     private static OrthogonalSimulator boundarySimulator(int length, char instruction) {
         MechanismSpec piston = new MechanismSpec(
-                "piston",
                 new GridPoint(0, 0),
                 Direction.EAST,
                 length,
@@ -358,7 +347,7 @@ class MechanismMotionTest {
             Direction grabbedBond,
             GridPoint attachedPosition,
             Direction attachedBond) {
-        MechanismView arm = simulator.mechanism("arm");
+        MechanismView arm = simulator.mechanism(0);
         assertEquals(new GridPoint(0, 2), arm.position());
         assertEquals(Direction.NORTH, arm.direction());
         assertEquals(2, arm.length());
@@ -379,7 +368,7 @@ class MechanismMotionTest {
             int length,
             GridPoint position,
             Direction direction) {
-        MechanismView mechanism = simulator.mechanism("piston");
+        MechanismView mechanism = simulator.mechanism(0);
         assertEquals(length, mechanism.length());
         assertEquals(position, mechanism.position());
         assertEquals(direction, mechanism.direction());

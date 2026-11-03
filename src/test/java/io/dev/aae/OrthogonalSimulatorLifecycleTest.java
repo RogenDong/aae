@@ -25,12 +25,12 @@ class OrthogonalSimulatorLifecycleTest {
         assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 0)));
         assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(0, 0)));
         assertFalse(simulator.isHalted());
-        assertEquals(new GridPoint(1, 1), simulator.mechanism("arm").position());
+        assertEquals(new GridPoint(1, 1), simulator.mechanism(0).position());
         assertEquals(1, simulator.grabsAt(new GridPoint(1, 0)));
-        assertEquals(1, simulator.heldEntities("arm").size());
+        assertEquals(1, simulator.heldEntities(0).size());
         assertEquals(0, simulator.outputCount("out"));
         simulator.step();
-        assertTrue(simulator.heldEntities("arm").isEmpty());
+        assertTrue(simulator.heldEntities(0).isEmpty());
         assertNull(simulator.atomAt(new GridPoint(1, 0)));
         assertEquals(1, simulator.outputCount("out"));
         assertFalse(simulator.isComplete());
@@ -67,7 +67,7 @@ class OrthogonalSimulatorLifecycleTest {
         // 机械臂在周期 1 抓住示例原子、周期 2 在原位释放，释放后的原子一直
         // 挡在输入占位上，输入不能再生产。
         SimulationPlan plan = new SimulationPlan(
-                List.of(mechanism("arm", 1, 0, Direction.WEST, ".fr")),
+                List.of(mechanism(1, 0, Direction.WEST, ".fr")),
                 List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
                 List.of(),
                 1);
@@ -166,7 +166,7 @@ class OrthogonalSimulatorLifecycleTest {
         Atom eastBonded = Atom.of((byte) 1).withBond(Direction.EAST, (byte) 2);
         Atom westBonded = Atom.of((byte) 5).withBond(Direction.WEST, (byte) 2);
         SimulationPlan plan = new SimulationPlan(
-                List.of(mechanism("arm", 0, 1, Direction.NORTH, ".fd")),
+                List.of(mechanism(0, 1, Direction.NORTH, ".fd")),
                 List.of(InputSpec.of(
                         "in",
                         new AtomPlacement(new GridPoint(0, 0), eastBonded),
@@ -177,7 +177,7 @@ class OrthogonalSimulatorLifecycleTest {
         OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
         simulator.run(3);
 
-        assertEquals(Direction.EAST, simulator.mechanism("arm").direction());
+        assertEquals(Direction.EAST, simulator.mechanism(0).direction());
         Atom rotatedSalt = simulator.atomAt(new GridPoint(1, 1));
         Atom rotatedWater = simulator.atomAt(new GridPoint(1, 2));
         assertEquals((byte) 1, rotatedSalt.type());
@@ -191,7 +191,7 @@ class OrthogonalSimulatorLifecycleTest {
     @Test
     void grabIsNoOpWhenAlreadyHoldingAndReleaseIsNoOpWhenHoldingNothing() {
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
-                List.of(new MechanismSpec("arm", new GridPoint(1, 0), Direction.WEST,
+                List.of(new MechanismSpec(new GridPoint(1, 0), Direction.WEST,
                         InstructionTape.once("rffrr"))),
                 List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
                 List.of(),
@@ -199,18 +199,18 @@ class OrthogonalSimulatorLifecycleTest {
 
         simulator.init();
         simulator.step();
-        assertTrue(simulator.heldEntities("arm").isEmpty());
+        assertTrue(simulator.heldEntities(0).isEmpty());
         simulator.run(2);
 
         // 重复抓取不累加计数；重复释放也不会让计数变成负数。
         assertEquals(1, simulator.boardSize());
         assertEquals(1, simulator.grabsAt(new GridPoint(0, 0)));
-        assertEquals(1, simulator.heldEntities("arm").size());
+        assertEquals(1, simulator.heldEntities(0).size());
         simulator.run(2);
         assertFalse(simulator.isHalted());
         assertEquals(1, simulator.boardSize());
         assertEquals(0, simulator.grabsAt(new GridPoint(0, 0)));
-        assertTrue(simulator.heldEntities("arm").isEmpty());
+        assertTrue(simulator.heldEntities(0).isEmpty());
     }
 
     // ---------- 意图冲突与停机 ----------
@@ -219,8 +219,8 @@ class OrthogonalSimulatorLifecycleTest {
     void atomsMovingOntoTheSameCellHaltInsteadOfOverwriting() {
         SimulationPlan plan = new SimulationPlan(
                 List.of(
-                        mechanism("east", 1, 1, Direction.NORTH, ".fg"),
-                        mechanism("west", 3, -1, Direction.SOUTH, ".fg")),
+                        mechanism(1, 1, Direction.NORTH, ".fg"),
+                        mechanism(3, -1, Direction.SOUTH, ".fg")),
                 List.of(
                         track(1, 1, 2, 1),
                         track(3, -1, 2, -1)),
@@ -245,7 +245,7 @@ class OrthogonalSimulatorLifecycleTest {
     void haltStopsAllFurtherStepsAndResetRecovers() {
         // 机构抓着 (1,0) 的原子沿轨道往东走，第二半周期撞上静止的 (2,0) 原子而停机。
         SimulationPlan plan = new SimulationPlan(
-                List.of(mechanism("arm", 1, 1, Direction.NORTH, ".fg")),
+                List.of(mechanism(1, 1, Direction.NORTH, ".fg")),
                 List.of(track(1, 1, 2, 1)),
                 List.of(
                         InputSpec.single("in-a", new GridPoint(1, 0), sampleAtom()),
@@ -258,7 +258,7 @@ class OrthogonalSimulatorLifecycleTest {
         assertTrue(simulator.isHalted());
         long haltedCycle = simulator.cycle();
         assertTrue(simulator.warnings().get(0).contains("already occupied by entity"));
-        assertEquals(new GridPoint(1, 1), simulator.mechanism("arm").position());
+        assertEquals(new GridPoint(1, 1), simulator.mechanism(0).position());
         assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(1, 0)));
         assertEquals(otherAtom(), simulator.atomAt(new GridPoint(2, 0)));
         assertEquals(1, simulator.grabsAt(new GridPoint(1, 0)));
@@ -306,8 +306,8 @@ class OrthogonalSimulatorLifecycleTest {
             List<Atom> inputAtoms, List<Atom> outputAtoms) {
         // 两步向西搬运，输出不与输入相交；两臂分别携带，缺键样本也能完整抵达输出。
         SimulationPlan plan = new SimulationPlan(
-                List.of(mechanism("left", 0, 1, Direction.NORTH, ".fggr"),
-                        mechanism("right", 1, -1, Direction.SOUTH, ".fggr")),
+                List.of(mechanism(0, 1, Direction.NORTH, ".fggr"),
+                        mechanism(1, -1, Direction.SOUTH, ".fggr")),
                 List.of(track(0, 1, -1, 1, -2, 1), track(1, -1, 0, -1, -1, -1)),
                 List.of(InputSpec.of("in",
                         new AtomPlacement(new GridPoint(0, 0), inputAtoms.get(0)),
@@ -319,7 +319,7 @@ class OrthogonalSimulatorLifecycleTest {
     }
 
     private static SimulationPlan shuttlePlan(long target, List<GlyphSpec> glyphs) {
-        return new SimulationPlan(List.of(mechanism("arm", 0, 1, Direction.NORTH, ".fgrt")),
+        return new SimulationPlan(List.of(mechanism(0, 1, Direction.NORTH, ".fgrt")),
                 List.of(track(0, 1, 1, 1)),
                 List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())),
                 List.of(OutputSpec.single("out", new GridPoint(1, 0), sampleAtom())), glyphs, target);
@@ -327,8 +327,8 @@ class OrthogonalSimulatorLifecycleTest {
 
     private static OrthogonalSimulator completionSimulator(long target) {
         return new OrthogonalSimulator(new SimulationPlan(
-                List.of(mechanism("a", 0, 1, Direction.NORTH, ".fgrt"),
-                        mechanism("b", 5, 6, Direction.NORTH, "..fgrt")),
+                List.of(mechanism(0, 1, Direction.NORTH, ".fgrt"),
+                        mechanism(5, 6, Direction.NORTH, "..fgrt")),
                 List.of(track(0, 1, 1, 1), track(5, 6, 6, 6)),
                 List.of(InputSpec.single("in-a", new GridPoint(0, 0), sampleAtom()),
                         InputSpec.single("in-b", new GridPoint(5, 5), otherAtom())),
@@ -337,9 +337,8 @@ class OrthogonalSimulatorLifecycleTest {
     }
 
     private static MechanismSpec mechanism(
-            String id, long x, long y, Direction direction, String program) {
+            long x, long y, Direction direction, String program) {
         return new MechanismSpec(
-                id,
                 new GridPoint(x, y),
                 direction,
                 InstructionTape.looping(program));

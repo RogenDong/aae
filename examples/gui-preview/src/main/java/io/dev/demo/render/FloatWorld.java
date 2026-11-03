@@ -79,7 +79,7 @@ public final class FloatWorld {
         long currentCycle = simulator.cycle();
         for (int i = 0; i < plan.mechanisms().size(); i++) {
             var spec = plan.mechanisms().get(i);
-            MechanismView view = simulator.mechanism(spec.id());
+            MechanismView view = simulator.mechanism(i);
             Instruction inst = spec.tape().instructionAt(currentCycle);
 
             double baseX = view.position().x();
@@ -124,7 +124,7 @@ public final class FloatWorld {
                 }
             }
 
-            dynamicArms.add(new FloatArm(spec.id(), currentX, currentY,
+            dynamicArms.add(new FloatArm(i, currentX, currentY,
                     currentAngle, currentLength, view.grabbing()));
         }
 
@@ -177,13 +177,14 @@ public final class FloatWorld {
             long currentCycle) {
         Map<Long, AtomMotion> resolved = new LinkedHashMap<>();
 //        Map<Long, Set<AtomMotion>> candidates = new LinkedHashMap<>();
-        for (var spec : plan.mechanisms()) {
-            List<Long> held = simulator.heldEntities(spec.id());
+        for (int i = 0; i < plan.mechanisms().size(); i++) {
+            var spec = plan.mechanisms().get(i);
+            List<Long> held = simulator.heldEntities(i);
             if (held.isEmpty()) {
                 continue;
             }
             Instruction instruction = spec.tape().instructionAt(currentCycle);
-            MechanismView mechanism = simulator.mechanism(spec.id());
+            MechanismView mechanism = simulator.mechanism(i);
             AtomMotion motion = AtomMotion.from(instruction, mechanism, plan);
             if (motion == null) {
                 continue;

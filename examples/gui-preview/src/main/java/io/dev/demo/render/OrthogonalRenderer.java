@@ -399,12 +399,13 @@ public final class OrthogonalRenderer {
 
         g2.setTransform(oldTx);
 
-        // 标注机械臂 ID 文本
+        // 按声明顺序显示从 1 开始的机械臂编号
         g2.setColor(Color.WHITE);
         g2.setFont(new Font("SansSerif", Font.BOLD, 14));
         FontMetrics fm = g2.getFontMetrics();
-        int textWidth = fm.stringWidth(arm.id());
-        g2.drawString(arm.id(), (int) (px - textWidth / 2.0), (int) (py + fm.getAscent() / 2.0 - 2));
+        String label = Integer.toString(arm.mechanismIndex() + 1);
+        int textWidth = fm.stringWidth(label);
+        g2.drawString(label, (int) (px - textWidth / 2.0), (int) (py + fm.getAscent() / 2.0 - 2));
     }
 
     /** 绘制一个原子向外延伸的化学键。 */

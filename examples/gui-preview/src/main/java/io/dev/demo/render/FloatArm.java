@@ -1,23 +1,18 @@
 package io.dev.demo.render;
 
 import io.dev.aae.Direction;
-import java.util.Objects;
 
 /**
  * 机械臂的连续浮点直角坐标渲染投影。
  */
 public record FloatArm(
-        String id,
+        int mechanismIndex,
         double x,
         double y,
         double angle,    // 弧度制，机械臂当前绝对指向角
         double length,   // 机械臂长度（默认1格=1.0）
         boolean grabbing  // 是否抓握
 ) {
-    public FloatArm {
-        Objects.requireNonNull(id, "id");
-    }
-
     /**
      * 将正交方向转换为弧度制角度。
      * 在标准直角坐标系中（X向右/东，Y向下/南）：

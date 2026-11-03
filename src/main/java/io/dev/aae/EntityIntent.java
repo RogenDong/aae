@@ -4,6 +4,7 @@ import java.util.Objects;
 
 /**
  * 机构在一个周期内向一个实体投递的意图。
+ * {@code mechanismIndex} 是来源机构在当前计划中的下标，从 0 开始。
  *
  * <p>意图先收集成批次，再按实体分组做兼容检查，最后统一提交。兼容规则：</p>
  *
@@ -20,7 +21,7 @@ import java.util.Objects;
 public record EntityIntent(
         Kind kind,
         long entity,
-        String mechanismId,
+        int mechanismIndex,
         long deltaX,
         long deltaY,
         GridPoint rotationCenter,
@@ -38,7 +39,6 @@ public record EntityIntent(
     public EntityIntent {
         Objects.requireNonNull(kind, "kind");
         Objects.requireNonNull(entity, "entity");
-        Objects.requireNonNull(mechanismId, "mechanismId");
         switch (kind) {
             case MOVE -> {
                 if (rotationCenter != null || quarterTurns != 0) {
@@ -65,30 +65,30 @@ public record EntityIntent(
     }
 
     /** 持有约束：机构仍抓着实体，但本周期不允许它移动。 */
-    public static EntityIntent stay(long entity, String mechanismId) {
-        return new EntityIntent(Kind.STAY, entity, mechanismId, 0, 0, null, 0);
+    public static EntityIntent stay(long entity, int mechanismIndex) {
+        return new EntityIntent(Kind.STAY, entity, mechanismIndex, 0, 0, null, 0);
     }
 
     /** 平移意图：把实体移动 {@code (deltaX, deltaY)}。 */
     public static EntityIntent move(
-            long entity, String mechanismId, long deltaX, long deltaY) {
-        return new EntityIntent(Kind.MOVE, entity, mechanismId, deltaX, deltaY, null, 0);
+            long entity, int mechanismIndex, long deltaX, long deltaY) {
+        return new EntityIntent(Kind.MOVE, entity, mechanismIndex, deltaX, deltaY, null, 0);
     }
 
     /** 旋转意图：把实体绕 {@code center} 顺时针旋转 {@code quarterTurns} 个 90 度。 */
     public static EntityIntent rotate(
-            long entity, String mechanismId, GridPoint center, int quarterTurns) {
-        return new EntityIntent(Kind.ROTATE, entity, mechanismId, 0, 0, center, quarterTurns);
+            long entity, int mechanismIndex, GridPoint center, int quarterTurns) {
+        return new EntityIntent(Kind.ROTATE, entity, mechanismIndex, 0, 0, center, quarterTurns);
     }
 
     /** 抓取意图：持有该实体（抓取计数加一）。 */
-    public static EntityIntent grab(long entity, String mechanismId) {
-        return new EntityIntent(Kind.GRAB, entity, mechanismId, 0, 0, null, 0);
+    public static EntityIntent grab(long entity, int mechanismIndex) {
+        return new EntityIntent(Kind.GRAB, entity, mechanismIndex, 0, 0, null, 0);
     }
 
     /** 释放意图：放弃持有该实体（抓取计数减一），实体留在原地。 */
-    public static EntityIntent release(long entity, String mechanismId) {
-        return new EntityIntent(Kind.RELEASE, entity, mechanismId, 0, 0, null, 0);
+    public static EntityIntent release(long entity, int mechanismIndex) {
+        return new EntityIntent(Kind.RELEASE, entity, mechanismIndex, 0, 0, null, 0);
     }
 
     /**

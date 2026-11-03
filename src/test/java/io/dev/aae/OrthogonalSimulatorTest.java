@@ -5,9 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -23,17 +21,17 @@ class OrthogonalSimulatorTest {
                 new GridPoint(1, -1));
         OrthogonalSimulator simulator = simulator(
                 List.of(track),
-                mechanism("arm", 0, 0, Direction.SOUTH, "ggt"));
+                mechanism(0, 0, Direction.SOUTH, "ggt"));
 
         simulator.step();
-        assertEquals(new GridPoint(1, 0), simulator.mechanism("arm").position());
-        assertEquals(Direction.SOUTH, simulator.mechanism("arm").direction());
+        assertEquals(new GridPoint(1, 0), simulator.mechanism(0).position());
+        assertEquals(Direction.SOUTH, simulator.mechanism(0).direction());
 
         simulator.step();
-        assertEquals(new GridPoint(1, -1), simulator.mechanism("arm").position());
+        assertEquals(new GridPoint(1, -1), simulator.mechanism(0).position());
 
         simulator.step();
-        assertEquals(new GridPoint(1, 0), simulator.mechanism("arm").position());
+        assertEquals(new GridPoint(1, 0), simulator.mechanism(0).position());
     }
 
     @Test
@@ -44,12 +42,12 @@ class OrthogonalSimulatorTest {
                 new GridPoint(0, -2));
         OrthogonalSimulator simulator = simulator(
                 List.of(track),
-                mechanism("arm", 0, 0, Direction.WEST, "gg"));
+                mechanism(0, 0, Direction.WEST, "gg"));
 
         simulator.run(2);
 
-        assertEquals(new GridPoint(0, -2), simulator.mechanism("arm").position());
-        assertEquals(Direction.WEST, simulator.mechanism("arm").direction());
+        assertEquals(new GridPoint(0, -2), simulator.mechanism(0).position());
+        assertEquals(Direction.WEST, simulator.mechanism(0).direction());
     }
 
     @Test
@@ -58,26 +56,26 @@ class OrthogonalSimulatorTest {
                 new GridPoint(0, 0), new GridPoint(1, 0));
         OrthogonalSimulator simulator = simulator(
                 List.of(track),
-                mechanism("minus-end", 0, 0, Direction.EAST, "t"),
-                mechanism("plus-end", 1, 0, Direction.WEST, "g"),
-                mechanism("off-track", 9, 9, Direction.NORTH, "g"));
+                mechanism(0, 0, Direction.EAST, "t"),
+                mechanism(1, 0, Direction.WEST, "g"),
+                mechanism(9, 9, Direction.NORTH, "g"));
 
         simulator.step();
 
-        assertEquals(new GridPoint(0, 0), simulator.mechanism("minus-end").position());
-        assertEquals(new GridPoint(1, 0), simulator.mechanism("plus-end").position());
-        assertEquals(new GridPoint(9, 9), simulator.mechanism("off-track").position());
+        assertEquals(new GridPoint(0, 0), simulator.mechanism(0).position());
+        assertEquals(new GridPoint(1, 0), simulator.mechanism(1).position());
+        assertEquals(new GridPoint(9, 9), simulator.mechanism(2).position());
     }
 
     @Test
     void adjacentEndsOfLongTrackFormALoop() {
         TrackSpec loop = squareLoop(0, 0);
         OrthogonalSimulator simulator = simulator(
-                List.of(loop), mechanism("arm", 0, 0, Direction.NORTH, "gggg"));
+                List.of(loop), mechanism(0, 0, Direction.NORTH, "gggg"));
 
         simulator.run(4);
 
-        assertEquals(new GridPoint(0, 0), simulator.mechanism("arm").position());
+        assertEquals(new GridPoint(0, 0), simulator.mechanism(0).position());
     }
 
     @ParameterizedTest
@@ -87,18 +85,18 @@ class OrthogonalSimulatorTest {
                 new GridPoint(0, 0), new GridPoint(1, 0), new GridPoint(2, 0));
         OrthogonalSimulator simulator = simulator(
                 List.of(track),
-                mechanism("left", 0, 0, Direction.NORTH, "g"),
-                mechanism("right", rightX, 0, Direction.SOUTH, rightProgram));
+                mechanism(0, 0, Direction.NORTH, "g"),
+                mechanism(rightX, 0, Direction.SOUTH, rightProgram));
 
         simulator.step();
 
         assertTrue(simulator.isHalted());
         assertEquals(1, simulator.cycle());
         assertEquals(1, simulator.warnings().size());
-        assertTrue(simulator.warnings().get(0).contains("mechanism left conflicts with mechanism right at (1,0)"));
-        assertEquals(new GridPoint(0, 0), simulator.mechanism("left").position());
-        assertEquals(new GridPoint(rightX, 0), simulator.mechanism("right").position());
-        assertEquals(List.of(simulator.mechanism("left"), simulator.mechanism("right")),
+        assertTrue(simulator.warnings().get(0).contains("mechanism[0] conflicts with mechanism[1] at (1,0)"));
+        assertEquals(new GridPoint(0, 0), simulator.mechanism(0).position());
+        assertEquals(new GridPoint(rightX, 0), simulator.mechanism(1).position());
+        assertEquals(List.of(simulator.mechanism(0), simulator.mechanism(1)),
                 simulator.mechanisms());
     }
 
@@ -108,19 +106,19 @@ class OrthogonalSimulatorTest {
                 new GridPoint(0, 0), new GridPoint(1, 0));
         OrthogonalSimulator simulator = simulator(
                 List.of(track),
-                mechanism("a", 0, 0, Direction.NORTH, "g"),
-                mechanism("b", 1, 0, Direction.NORTH, "t"));
+                mechanism(0, 0, Direction.NORTH, "g"),
+                mechanism(1, 0, Direction.NORTH, "t"));
 
         simulator.step();
 
-        assertEquals(new GridPoint(1, 0), simulator.mechanism("a").position());
-        assertEquals(new GridPoint(0, 0), simulator.mechanism("b").position());
+        assertEquals(new GridPoint(1, 0), simulator.mechanism(0).position());
+        assertEquals(new GridPoint(0, 0), simulator.mechanism(1).position());
     }
 
     @Test
     void declarationOrderDoesNotChangePerMechanismState() {
-        MechanismSpec a = mechanism("a", 0, 0, Direction.NORTH, "ggdga");
-        MechanismSpec b = mechanism("b", 10, 0, Direction.WEST, "dgtg.");
+        MechanismSpec a = mechanism(0, 0, Direction.NORTH, "ggdga");
+        MechanismSpec b = mechanism(10, 0, Direction.WEST, "dgtg.");
         List<TrackSpec> tracks = List.of(squareLoop(0, 0), squareLoop(10, 0));
         OrthogonalSimulator forwardOrder = simulator(tracks, a, b);
         OrthogonalSimulator reverseOrder = simulator(tracks, b, a);
@@ -128,16 +126,16 @@ class OrthogonalSimulatorTest {
         forwardOrder.run(250);
         reverseOrder.run(250);
 
-        assertEquals(forwardOrder.mechanism("a"), reverseOrder.mechanism("a"));
-        assertEquals(forwardOrder.mechanism("b"), reverseOrder.mechanism("b"));
+        assertEquals(forwardOrder.mechanism(0), reverseOrder.mechanism(1));
+        assertEquals(forwardOrder.mechanism(1), reverseOrder.mechanism(0));
     }
 
     @Test
     void runningInBatchesMatchesOneContinuousRun() {
         SimulationPlan plan = new SimulationPlan(
                 List.of(
-                        mechanism("a", 0, 0, Direction.SOUTH, "ggadt."),
-                        mechanism("b", 10, 0, Direction.EAST, "dgga")),
+                        mechanism(0, 0, Direction.SOUTH, "ggadt."),
+                        mechanism(10, 0, Direction.EAST, "dgga")),
                 List.of(squareLoop(0, 0), squareLoop(10, 0)));
         OrthogonalSimulator continuous = new OrthogonalSimulator(plan);
         OrthogonalSimulator batched = new OrthogonalSimulator(plan);
@@ -158,9 +156,8 @@ class OrthogonalSimulatorTest {
         TrackSpec translatedTrack = new TrackSpec(
                 originalTrack.type(),
                 originalTrack.points().stream().map(point -> point.add(offset)).toList());
-        MechanismSpec originalSpec = mechanism("m", 3, 4, Direction.WEST, "ggagdt");
+        MechanismSpec originalSpec = mechanism(3, 4, Direction.WEST, "ggagdt");
         MechanismSpec translatedSpec = new MechanismSpec(
-                originalSpec.id(),
                 originalSpec.initialPosition().add(offset),
                 originalSpec.initialDirection(),
                 originalSpec.tape());
@@ -171,26 +168,26 @@ class OrthogonalSimulatorTest {
         translated.run(117);
 
         assertEquals(
-                original.mechanism("m").position().add(offset),
-                translated.mechanism("m").position());
+                original.mechanism(0).position().add(offset),
+                translated.mechanism(0).position());
         assertEquals(
-                original.mechanism("m").direction(),
-                translated.mechanism("m").direction());
+                original.mechanism(0).direction(),
+                translated.mechanism(0).direction());
     }
 
     @Test
     void resetRestoresTheInitialState() {
         OrthogonalSimulator simulator = simulator(
                 List.of(squareLoop(5, 6)),
-                mechanism("m", 5, 6, Direction.SOUTH, "gd"));
+                mechanism(5, 6, Direction.SOUTH, "gd"));
         simulator.run(20);
 
         simulator.reset();
 
         assertEquals(0, simulator.cycle());
         assertEquals(
-                new MechanismView("m", new GridPoint(5, 6), Direction.SOUTH, false),
-                simulator.mechanism("m"));
+                new MechanismView(new GridPoint(5, 6), Direction.SOUTH, false),
+                simulator.mechanism(0));
     }
 
     @Test
@@ -198,38 +195,80 @@ class OrthogonalSimulatorTest {
         Random random = new Random(0x5eedL);
         List<MechanismSpec> specs = new ArrayList<>();
         List<TrackSpec> tracks = new ArrayList<>();
-        Map<String, ReferenceState> reference = new HashMap<>();
+        List<ReferenceState> reference = new ArrayList<>();
 
         for (int index = 0; index < 40; index++) {
-            String id = "m-" + index;
             long baseX = index * 4L;
             Direction direction = Direction.values()[random.nextInt(4)];
             String program = randomProgram(random, 3 + random.nextInt(12));
             TrackSpec track = squareLoop(baseX, 0);
-            MechanismSpec spec = mechanism(id, baseX, 0, direction, program);
+            MechanismSpec spec = mechanism(baseX, 0, direction, program);
             specs.add(spec);
             tracks.add(track);
-            reference.put(id, new ReferenceState(track.points(), direction, spec.tape()));
+            reference.add(new ReferenceState(track.points(), direction, spec.tape()));
         }
 
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(specs, tracks));
         for (long cycle = 0; cycle < 500; cycle++) {
             simulator.step();
-            for (MechanismSpec spec : specs) {
-                ReferenceState expected = reference.get(spec.id());
+            for (int index = 0; index < specs.size(); index++) {
+                ReferenceState expected = reference.get(index);
                 expected.step(cycle);
-                MechanismView mechanism = simulator.mechanism(spec.id());
-                assertEquals(expected.view(spec.id(), mechanism.grabbing()), mechanism);
+                MechanismView mechanism = simulator.mechanism(index);
+                assertEquals(expected.view(mechanism.grabbing()), mechanism);
             }
         }
     }
 
     @Test
-    void rejectsInvalidRunCountsAndUnknownIds() {
+    void rejectsInvalidRunCounts() {
         OrthogonalSimulator simulator = simulator();
 
         assertThrows(IllegalArgumentException.class, () -> simulator.run(-1));
-        assertThrows(IllegalArgumentException.class, () -> simulator.mechanism("missing"));
+    }
+
+    @Test
+    void queriesUseDeclarationIndexesAcrossMovementAndReset() {
+        OrthogonalSimulator simulator = simulator(
+                List.of(squareLoop(0, 0), squareLoop(10, 0)),
+                mechanism(0, 0, Direction.NORTH, "g"),
+                mechanism(10, 0, Direction.WEST, "d"));
+        List<MechanismView> initial = simulator.mechanisms();
+        assertEquals(List.of(
+                new MechanismView(new GridPoint(0, 0), Direction.NORTH, false),
+                new MechanismView(new GridPoint(10, 0), Direction.WEST, false)), initial);
+        assertThrows(UnsupportedOperationException.class, initial::clear);
+
+        simulator.step();
+
+        assertEquals(new GridPoint(1, 0), simulator.mechanism(0).position());
+        assertEquals(Direction.NORTH, simulator.mechanism(1).direction());
+        for (int index = 0; index < simulator.mechanismCount(); index++) {
+            assertEquals(simulator.mechanisms().get(index), simulator.mechanism(index));
+            assertTrue(simulator.heldEntities(index).isEmpty());
+        }
+        assertEquals(new GridPoint(0, 0), initial.get(0).position());
+
+        simulator.reset();
+
+        assertEquals(initial, simulator.mechanisms());
+        for (int index = 0; index < simulator.mechanismCount(); index++) {
+            assertEquals(initial.get(index), simulator.mechanism(index));
+        }
+    }
+
+    @Test
+    void rejectsIndexesOutsideTheMechanismList() {
+        for (OrthogonalSimulator simulator : List.of(simulator(), simulator(
+                mechanism(0, 0, Direction.NORTH, "."),
+                mechanism(1, 0, Direction.SOUTH, ".")))) {
+            assertThrows(IndexOutOfBoundsException.class, () -> simulator.mechanism(-1));
+            assertThrows(IndexOutOfBoundsException.class,
+                    () -> simulator.mechanism(simulator.mechanismCount()));
+            assertThrows(IndexOutOfBoundsException.class, () -> simulator.heldEntities(-1));
+            assertThrows(IndexOutOfBoundsException.class,
+                    () -> simulator.heldEntities(simulator.mechanismCount()));
+        }
     }
 
     @Test
@@ -239,13 +278,13 @@ class OrthogonalSimulatorTest {
                 new GridPoint(Long.MAX_VALUE, Long.MIN_VALUE));
         OrthogonalSimulator simulator = simulator(
                 List.of(track),
-                mechanism("edge", Long.MAX_VALUE - 1, Long.MIN_VALUE, Direction.WEST, "g"));
+                mechanism(Long.MAX_VALUE - 1, Long.MIN_VALUE, Direction.WEST, "g"));
 
         simulator.step();
 
         assertEquals(
                 new GridPoint(Long.MAX_VALUE, Long.MIN_VALUE),
-                simulator.mechanism("edge").position());
+                simulator.mechanism(0).position());
     }
 
     private static OrthogonalSimulator simulator(MechanismSpec... mechanisms) {
@@ -258,13 +297,11 @@ class OrthogonalSimulatorTest {
     }
 
     private static MechanismSpec mechanism(
-            String id,
             long x,
             long y,
             Direction direction,
             String program) {
         return new MechanismSpec(
-                id,
                 new GridPoint(x, y),
                 direction,
                 InstructionTape.looping(program));
@@ -311,8 +348,8 @@ class OrthogonalSimulatorTest {
             }
         }
 
-        private MechanismView view(String id, boolean grabbing) {
-            return new MechanismView(id, loop.get(trackIndex), direction, grabbing);
+        private MechanismView view(boolean grabbing) {
+            return new MechanismView(loop.get(trackIndex), direction, grabbing);
         }
     }
 }

@@ -7,7 +7,6 @@ import java.util.function.Function;
 public final class SimulationPlan {
 
     private final List<MechanismSpec> mechanisms;
-    private final Map<String, Integer> indexesById;
     private final List<TrackSpec> tracks;
     private final TrackNetwork trackNetwork;
 
@@ -79,8 +78,9 @@ public final class SimulationPlan {
 
         // 按部件声明顺序检查实际占位格点；索引只在构造期间使用。
         Map<GridPoint, String> occupants = new LinkedHashMap<>();
-        for (MechanismSpec mechanism : mechanisms) {
-            claimLayoutCell(occupants, mechanism.initialPosition(), "mechanism '" + mechanism.id() + "'");
+        for (int index = 0; index < mechanisms.size(); index++) {
+            MechanismSpec mechanism = mechanisms.get(index);
+            claimLayoutCell(occupants, mechanism.initialPosition(), "mechanism[" + index + "]");
         }
         for (int index = 0; index < tracks.size(); index++) {
             for (GridPoint point : tracks.get(index).points()) {
@@ -96,7 +96,6 @@ public final class SimulationPlan {
         }
 
         this.mechanisms = List.copyOf(mechanisms);
-        this.indexesById = indexByIds("mechanism", this.mechanisms, MechanismSpec::id);
         this.tracks = List.copyOf(tracks);
         this.trackNetwork = TrackNetwork.from(this.tracks);
 
@@ -245,10 +244,6 @@ public final class SimulationPlan {
 
     public int size() {
         return mechanisms.size();
-    }
-
-    int indexOf(String id) {
-        return indexIn(indexesById, "mechanism", id);
     }
 
     int indexOfInput(String id) {

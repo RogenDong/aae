@@ -300,7 +300,7 @@ public final class OrthogonalSimulator {
         // 8. 提交实体状态与持有关系。
         commitAtomChanges(changes);
         for (EntityIntent intent : intents) {
-            List<Long> held = heldByMechanism.get(plan.indexOf(intent.mechanismId()));
+            List<Long> held = heldByMechanism.get(intent.mechanismIndex());
             long entity = intent.entity();
             switch (intent.kind()) {
                 case GRAB -> held.add(entity);
@@ -335,16 +335,13 @@ public final class OrthogonalSimulator {
         }
     }
 
-    public MechanismView mechanism(String id) {
-        return mechanism(plan.indexOf(id));
-    }
-
+    /** 按计划声明顺序返回机构状态的不可变快照。 */
     public List<MechanismView> mechanisms() {
         List<MechanismView> views = new ArrayList<>(mechanismCount());
         for (int i = 0; i < mechanismCount(); i++) {
             views.add(mechanism(i));
         }
-        return views;
+        return List.copyOf(views);
     }
 
     /** 计划里的符文声明，按声明顺序。 */
@@ -409,9 +406,9 @@ public final class OrthogonalSimulator {
         return grabCounts.getOrDefault(entity, 0);
     }
 
-    /** 指定机构当前持有的实体集合。 */
-    public List<Long> heldEntities(String mechanismId) {
-        return List.copyOf(heldByMechanism.get(plan.indexOf(mechanismId)));
+    /** 返回计划中指定下标（从 0 开始）的机构当前持有实体的不可变快照。 */
+    public List<Long> heldEntities(int index) {
+        return List.copyOf(heldByMechanism.get(Objects.checkIndex(index, mechanismCount())));
     }
 
     /** 指定输出的累计消费次数。 */
@@ -474,9 +471,10 @@ public final class OrthogonalSimulator {
         return hash;
     }
 
-    private MechanismView mechanism(int index) {
+    /** 返回计划中指定下标（从 0 开始）的机构状态。 */
+    public MechanismView mechanism(int index) {
+        Objects.checkIndex(index, mechanismCount());
         return new MechanismView(
-                plan.mechanisms().get(index).id(),
                 new GridPoint(x[index], y[index]),
                 Direction.fromOrdinal(direction[index]),
                 length[index],
@@ -486,9 +484,9 @@ public final class OrthogonalSimulator {
     private void haltForIncompatibleIntents(EntityIntent intent, EntityIntent other) {
         haltWithWarning("entity #" + intent.entity()
                 + " received incompatible intents "
-                + other.describe() + " (from '" + other.mechanismId()
-                + "') and " + intent.describe()
-                + " (from '" + intent.mechanismId() + "')");
+                + other.describe() + " (from mechanism[" + other.mechanismIndex()
+                + "]) and " + intent.describe()
+                + " (from mechanism[" + intent.mechanismIndex() + "])");
     }
 
     private void haltForMultiEntityDestinationConflict(GridPoint pos, long entity1, long entity2) {
@@ -501,12 +499,12 @@ public final class OrthogonalSimulator {
         }
     }
 
-    private void haltForMechanismConflict(String mech, String other, GridPoint pos) {
-        haltWithWarning("mechanism " + mech + " conflicts with mechanism " + other + " at " + pos);
+    private void haltForMechanismConflict(int mech, int other, GridPoint pos) {
+        haltWithWarning("mechanism[" + mech + "] conflicts with mechanism[" + other + "] at " + pos);
     }
 
-    private void haltForMechanismEntityConflict(String mechId, long occupant, GridPoint pos) {
-        haltWithWarning("mechanism " + mechId + " overlaps entity #" + occupant + " at " + pos);
+    private void haltForMechanismEntityConflict(int mechIndex, long occupant, GridPoint pos) {
+        haltWithWarning("mechanism[" + mechIndex + "] overlaps entity #" + occupant + " at " + pos);
     }
 
     /** 记录停机警告：写入警告列表并输出到标准错误流。 */
@@ -523,7 +521,6 @@ public final class OrthogonalSimulator {
             GlyphPhase phase,
             List<EntityIntent> intents) {
         List<Long> held = heldByMechanism.get(mechIndex);
-        MechanismSpec mechanism = plan.mechanisms().get(mechIndex);
         Direction facing = Direction.fromOrdinal(direction[mechIndex]);
 
         // 第一半周期只执行抓取与释放；第二半周期执行其余指令。
@@ -539,12 +536,12 @@ public final class OrthogonalSimulator {
                     for (AtomPlacement ap : molecule.atoms()) {
                         intents.add(EntityIntent.grab(
                                 entityAtPosition.getOrDefault(ap.position(), 0L),
-                                mechanism.id()));
+                                mechIndex));
                     }
                 }
                 case RELEASE -> {
                     for (long entity : held) {
-                        intents.add(EntityIntent.release(entity, mechanism.id()));
+                        intents.add(EntityIntent.release(entity, mechIndex));
                     }
                 }
                 default -> {
@@ -559,7 +556,6 @@ public final class OrthogonalSimulator {
             return;
         }
 
-        var mid = mechanism.id();
         var entities = new HashSet<Long>(held.size() * 2);
         // 检索被抓握的分子
         for (long entity : held) {
@@ -586,31 +582,31 @@ public final class OrthogonalSimulator {
                     break;
                 }
                 for (long entity : entities) {
-                    intents.add(EntityIntent.move(entity, mid, deltaX, deltaY));
+                    intents.add(EntityIntent.move(entity, mechIndex, deltaX, deltaY));
                 }
             }
             case ROTATE_CCW -> {
                 GridPoint center = new GridPoint(x[mechIndex], y[mechIndex]);
                 for (long entity : entities) {
-                    intents.add(EntityIntent.rotate(entity, mid, center, -1));
+                    intents.add(EntityIntent.rotate(entity, mechIndex, center, -1));
                 }
             }
             case ROTATE_CW -> {
                 GridPoint center = new GridPoint(x[mechIndex], y[mechIndex]);
                 for (long entity : entities) {
-                    intents.add(EntityIntent.rotate(entity, mid, center, 1));
+                    intents.add(EntityIntent.rotate(entity, mechIndex, center, 1));
                 }
             }
             case PIVOT_CCW -> {
                 GridPoint center = grabPosition(mechIndex, facing);
                 for (long entity : entities) {
-                    intents.add(EntityIntent.rotate(entity, mid, center, -1));
+                    intents.add(EntityIntent.rotate(entity, mechIndex, center, -1));
                 }
             }
             case PIVOT_CW -> {
                 GridPoint center = grabPosition(mechIndex, facing);
                 for (long entity : entities) {
-                    intents.add(EntityIntent.rotate(entity, mid, center, 1));
+                    intents.add(EntityIntent.rotate(entity, mechIndex, center, 1));
                 }
             }
             case EXTEND_PISTON -> {
@@ -619,7 +615,7 @@ public final class OrthogonalSimulator {
                 }
                 for (long entity : entities) {
                     intents.add(EntityIntent.move(
-                            entity, mid, facing.deltaX(), facing.deltaY()));
+                            entity, mechIndex, facing.deltaX(), facing.deltaY()));
                 }
             }
             case RETRACT_PISTON -> {
@@ -628,7 +624,7 @@ public final class OrthogonalSimulator {
                 }
                 for (long entity : entities) {
                     intents.add(EntityIntent.move(
-                            entity, mid, -facing.deltaX(), -facing.deltaY()));
+                            entity, mechIndex, -facing.deltaX(), -facing.deltaY()));
                 }
             }
             case GRAB, RELEASE, WAIT -> {
@@ -638,7 +634,7 @@ public final class OrthogonalSimulator {
         if (intents.size() == firstIntent) {
             // 等待、重复抓取、轨道端点和活塞边界都必须保留静止持有约束。
             for (long entity : entities) {
-                intents.add(EntityIntent.stay(entity, mid));
+                intents.add(EntityIntent.stay(entity, mechIndex));
             }
         }
     }
@@ -846,14 +842,13 @@ public final class OrthogonalSimulator {
             GridPoint result = change == null ? entry.getValue() : change.newPosition();
             resultAt.put(result, entity);
         }
-        List<MechanismSpec> mechanisms = plan.mechanisms();
         for (int i = 0; i < mechanismCount(); i++) {
             // checking mechanism overlap
             for (int j = i + 1; j < mechanismCount(); j++) {
                 if (nextX[i] == nextX[j] && nextY[i] == nextY[j]) {
                     haltForMechanismConflict(
-                            mechanisms.get(i).id(),
-                            mechanisms.get(j).id(),
+                            i,
+                            j,
                             new GridPoint(nextX[i], nextY[i]));
                     return false;
                 }
@@ -862,7 +857,7 @@ public final class OrthogonalSimulator {
             GridPoint mechBase = new GridPoint(nextX[i], nextY[i]);
             long occupant = resultAt.getOrDefault(mechBase, 0L);
             if (occupant != 0) {
-                haltForMechanismEntityConflict(mechanisms.get(i).id(), occupant, mechBase);
+                haltForMechanismEntityConflict(i, occupant, mechBase);
                 return false;
             }
         }

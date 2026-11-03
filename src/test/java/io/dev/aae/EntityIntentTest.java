@@ -14,70 +14,70 @@ class EntityIntentTest {
 
     @Test
     void grabIsIncompatibleWithTranslationAndRotation() {
-        EntityIntent grab = EntityIntent.grab(ENTITY, "a");
+        EntityIntent grab = EntityIntent.grab(ENTITY, 0);
 
-        assertFalse(grab.compatibleWith(EntityIntent.move(ENTITY, "b", 1, 0)));
-        assertFalse(grab.compatibleWith(EntityIntent.move(ENTITY, "b", 0, -1)));
-        assertFalse(grab.compatibleWith(EntityIntent.rotate(ENTITY, "b", CENTER, 1)));
-        assertFalse(grab.compatibleWith(EntityIntent.rotate(ENTITY, "b", CENTER, -1)));
+        assertFalse(grab.compatibleWith(EntityIntent.move(ENTITY, 1, 1, 0)));
+        assertFalse(grab.compatibleWith(EntityIntent.move(ENTITY, 1, 0, -1)));
+        assertFalse(grab.compatibleWith(EntityIntent.rotate(ENTITY, 1, CENTER, 1)));
+        assertFalse(grab.compatibleWith(EntityIntent.rotate(ENTITY, 1, CENTER, -1)));
     }
 
     @Test
     void releaseIsCompatibleWithTranslationAndRotation() {
-        EntityIntent release = EntityIntent.release(ENTITY, "a");
+        EntityIntent release = EntityIntent.release(ENTITY, 0);
 
-        assertTrue(release.compatibleWith(EntityIntent.move(ENTITY, "b", 3, -2)));
-        assertTrue(release.compatibleWith(EntityIntent.move(ENTITY, "b", 0, 0)));
-        assertTrue(release.compatibleWith(EntityIntent.rotate(ENTITY, "b", CENTER, 1)));
-        assertTrue(release.compatibleWith(EntityIntent.rotate(ENTITY, "b", CENTER, -1)));
-        assertTrue(release.compatibleWith(EntityIntent.release(ENTITY, "b")));
-        assertTrue(release.compatibleWith(EntityIntent.grab(ENTITY, "b")));
+        assertTrue(release.compatibleWith(EntityIntent.move(ENTITY, 1, 3, -2)));
+        assertTrue(release.compatibleWith(EntityIntent.move(ENTITY, 1, 0, 0)));
+        assertTrue(release.compatibleWith(EntityIntent.rotate(ENTITY, 1, CENTER, 1)));
+        assertTrue(release.compatibleWith(EntityIntent.rotate(ENTITY, 1, CENTER, -1)));
+        assertTrue(release.compatibleWith(EntityIntent.release(ENTITY, 1)));
+        assertTrue(release.compatibleWith(EntityIntent.grab(ENTITY, 1)));
     }
 
     @Test
     void grabsAreCompatibleWithOtherGrabsAndReleases() {
-        EntityIntent grab = EntityIntent.grab(ENTITY, "a");
+        EntityIntent grab = EntityIntent.grab(ENTITY, 0);
 
-        assertTrue(grab.compatibleWith(EntityIntent.grab(ENTITY, "b")));
-        assertTrue(grab.compatibleWith(EntityIntent.release(ENTITY, "b")));
+        assertTrue(grab.compatibleWith(EntityIntent.grab(ENTITY, 1)));
+        assertTrue(grab.compatibleWith(EntityIntent.release(ENTITY, 1)));
     }
 
     @Test
     void stationaryHoldersAllowGrabAndReleaseButRejectMotion() {
-        EntityIntent stay = EntityIntent.stay(ENTITY, "a");
+        EntityIntent stay = EntityIntent.stay(ENTITY, 0);
 
-        assertTrue(stay.compatibleWith(EntityIntent.stay(ENTITY, "b")));
-        assertTrue(stay.compatibleWith(EntityIntent.grab(ENTITY, "b")));
-        assertTrue(stay.compatibleWith(EntityIntent.release(ENTITY, "b")));
-        assertFalse(stay.compatibleWith(EntityIntent.move(ENTITY, "b", 1, 0)));
-        assertFalse(stay.compatibleWith(EntityIntent.rotate(ENTITY, "b", CENTER, 1)));
-        assertFalse(EntityIntent.move(ENTITY, "b", 1, 0).compatibleWith(stay));
-        assertFalse(EntityIntent.rotate(ENTITY, "b", CENTER, 1).compatibleWith(stay));
+        assertTrue(stay.compatibleWith(EntityIntent.stay(ENTITY, 1)));
+        assertTrue(stay.compatibleWith(EntityIntent.grab(ENTITY, 1)));
+        assertTrue(stay.compatibleWith(EntityIntent.release(ENTITY, 1)));
+        assertFalse(stay.compatibleWith(EntityIntent.move(ENTITY, 1, 1, 0)));
+        assertFalse(stay.compatibleWith(EntityIntent.rotate(ENTITY, 1, CENTER, 1)));
+        assertFalse(EntityIntent.move(ENTITY, 1, 1, 0).compatibleWith(stay));
+        assertFalse(EntityIntent.rotate(ENTITY, 1, CENTER, 1).compatibleWith(stay));
     }
 
     @Test
     void identicalMotionsAreCompatibleAndDifferentMotionsAreNot() {
-        EntityIntent east = EntityIntent.move(ENTITY, "a", 1, 0);
+        EntityIntent east = EntityIntent.move(ENTITY, 0, 1, 0);
 
-        assertTrue(east.compatibleWith(EntityIntent.move(ENTITY, "b", 1, 0)));
-        assertFalse(east.compatibleWith(EntityIntent.move(ENTITY, "b", -1, 0)));
-        assertFalse(east.compatibleWith(EntityIntent.move(ENTITY, "b", 0, 1)));
-        assertFalse(east.compatibleWith(EntityIntent.rotate(ENTITY, "b", CENTER, 1)));
+        assertTrue(east.compatibleWith(EntityIntent.move(ENTITY, 1, 1, 0)));
+        assertFalse(east.compatibleWith(EntityIntent.move(ENTITY, 1, -1, 0)));
+        assertFalse(east.compatibleWith(EntityIntent.move(ENTITY, 1, 0, 1)));
+        assertFalse(east.compatibleWith(EntityIntent.rotate(ENTITY, 1, CENTER, 1)));
 
-        EntityIntent turn = EntityIntent.rotate(ENTITY, "a", CENTER, 1);
-        assertTrue(turn.compatibleWith(EntityIntent.rotate(ENTITY, "b", CENTER, 1)));
-        assertFalse(turn.compatibleWith(EntityIntent.rotate(ENTITY, "b", CENTER, 3)));
-        assertFalse(turn.compatibleWith(EntityIntent.rotate(ENTITY, "b", new GridPoint(3, 2), 1)));
+        EntityIntent turn = EntityIntent.rotate(ENTITY, 0, CENTER, 1);
+        assertTrue(turn.compatibleWith(EntityIntent.rotate(ENTITY, 1, CENTER, 1)));
+        assertFalse(turn.compatibleWith(EntityIntent.rotate(ENTITY, 1, CENTER, 3)));
+        assertFalse(turn.compatibleWith(EntityIntent.rotate(ENTITY, 1, new GridPoint(3, 2), 1)));
     }
 
     @Test
     void rotationQuarterTurnsAreNormalizedAndMustNotBeZero() {
-        assertEquals(3, EntityIntent.rotate(ENTITY, "a", CENTER, -1).quarterTurns());
-        assertEquals(3, EntityIntent.rotate(ENTITY, "a", CENTER, 7).quarterTurns());
-        assertEquals(1, EntityIntent.rotate(ENTITY, "a", CENTER, 5).quarterTurns());
+        assertEquals(3, EntityIntent.rotate(ENTITY, 0, CENTER, -1).quarterTurns());
+        assertEquals(3, EntityIntent.rotate(ENTITY, 0, CENTER, 7).quarterTurns());
+        assertEquals(1, EntityIntent.rotate(ENTITY, 0, CENTER, 5).quarterTurns());
         assertThrows(
                 IllegalArgumentException.class,
-                () -> EntityIntent.rotate(ENTITY, "a", CENTER, 0));
+                () -> EntityIntent.rotate(ENTITY, 0, CENTER, 0));
     }
 
     @Test
@@ -85,14 +85,14 @@ class EntityIntentTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new EntityIntent(
-                        EntityIntent.Kind.MOVE, ENTITY, "a", 1, 0, CENTER, 0));
+                        EntityIntent.Kind.MOVE, ENTITY, 0, 1, 0, CENTER, 0));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new EntityIntent(
-                        EntityIntent.Kind.GRAB, ENTITY, "a", 1, 0, null, 0));
+                        EntityIntent.Kind.GRAB, ENTITY, 0, 1, 0, null, 0));
         assertThrows(
                 NullPointerException.class,
                 () -> new EntityIntent(
-                        EntityIntent.Kind.ROTATE, ENTITY, "a", 0, 0, null, 1));
+                        EntityIntent.Kind.ROTATE, ENTITY, 0, 0, 0, null, 1));
     }
 }

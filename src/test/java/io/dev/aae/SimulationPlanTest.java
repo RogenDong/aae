@@ -10,13 +10,15 @@ import org.junit.jupiter.api.Test;
 class SimulationPlanTest {
 
     @Test
-    void mechanismIdsMustBeUnique() {
-        MechanismSpec first = mechanism("same", 0, 0);
-        MechanismSpec second = mechanism("same", 1, 0);
+    void mechanismsKeepDeclarationOrderInAnImmutableSnapshot() {
+        MechanismSpec first = mechanism(0, 0);
+        MechanismSpec second = mechanism(1, 0);
+        List<MechanismSpec> definitions = new ArrayList<>(List.of(first, second));
+        SimulationPlan plan = new SimulationPlan(definitions);
+        definitions.clear();
 
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> SimulationPlan.of(first, second));
+        assertEquals(List.of(first, second), plan.mechanisms());
+        assertThrows(UnsupportedOperationException.class, () -> plan.mechanisms().clear());
     }
 
     @Test
@@ -72,9 +74,8 @@ class SimulationPlanTest {
                         new AtomPlacement(new GridPoint(0, 0), otherAtom())));
     }
 
-    private static MechanismSpec mechanism(String id, long x, long y) {
+    private static MechanismSpec mechanism(long x, long y) {
         return new MechanismSpec(
-                id,
                 new GridPoint(x, y),
                 Direction.NORTH,
                 InstructionTape.empty());

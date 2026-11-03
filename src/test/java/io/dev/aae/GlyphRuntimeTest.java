@@ -31,9 +31,9 @@ class GlyphRuntimeTest {
     void transportedAtomsAreBondedOnAGlyphInAValidLayout() {
         try (var handle = GlyphRegistry.global().register(OMGlyphs.BONDING)) {
             OrthogonalSimulator simulator = simulatorOf(
-                    List.of(new MechanismSpec("left", new GridPoint(-2, 1), Direction.NORTH,
+                    List.of(new MechanismSpec(new GridPoint(-2, 1), Direction.NORTH,
                                     InstructionTape.once("fggr")),
-                            new MechanismSpec("right", new GridPoint(-1, -1), Direction.SOUTH,
+                            new MechanismSpec(new GridPoint(-1, -1), Direction.SOUTH,
                                     InstructionTape.once("fggr"))),
                     List.of(track(-2, 1, -1, 1, 0, 1), track(-1, -1, 0, -1, 1, -1)),
                     List.of(InputSpec.of("in",
@@ -245,7 +245,7 @@ class GlyphRuntimeTest {
                     return state + 1;
                 }))) {
             OrthogonalSimulator simulator = simulatorOf(
-                    List.of(new MechanismSpec("carrier", new GridPoint(0, 1), Direction.NORTH,
+                    List.of(new MechanismSpec(new GridPoint(0, 1), Direction.NORTH,
                             InstructionTape.once("fg"))),
                     List.of(track(0, 1, 1, 1)),
                     List.of(InputSpec.single("in", new GridPoint(0, 0), sampleAtom())), List.of(),
@@ -258,7 +258,7 @@ class GlyphRuntimeTest {
             assertThrows(GlyphExecutionException.class, simulator::step);
             assertTrue(simulator.isHalted());
             assertEquals(1, simulator.cycle());
-            assertEquals(new GridPoint(0, 1), simulator.mechanism("carrier").position());
+            assertEquals(new GridPoint(0, 1), simulator.mechanism(0).position());
             assertEquals(held, simulator.entityAt(new GridPoint(0, 0)));
             assertEquals(1, simulator.grabsAt(new GridPoint(0, 0)));
             assertNull(simulator.atomAt(new GridPoint(1, 0)));
@@ -370,7 +370,7 @@ class GlyphRuntimeTest {
                         } else {
                             // 抛异常前确认机构已运动，第一半周期状态与延迟产物也已经提交。
                             assertEquals(3, state);
-                            assertEquals(new GridPoint(0, 1), observed[0].mechanism("carrier").position());
+                            assertEquals(new GridPoint(0, 1), observed[0].mechanism(0).position());
                             assertEquals(sampleAtom(), observed[0].atomAt(new GridPoint(6, 5)));
                             throw failure;
                         }
@@ -379,7 +379,7 @@ class GlyphRuntimeTest {
                 }))) {
 
             OrthogonalSimulator simulator = simulatorOf(
-                    List.of(new MechanismSpec("carrier", new GridPoint(-1, 1), Direction.NORTH,
+                    List.of(new MechanismSpec(new GridPoint(-1, 1), Direction.NORTH,
                             InstructionTape.once("fg"))),
                     List.of(track(-1, 1, 0, 1)),
                     List.of(InputSpec.single("in", new GridPoint(-1, 0), sampleAtom())),
@@ -403,9 +403,9 @@ class GlyphRuntimeTest {
             // 周期开始时的状态被完整还原。
             assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(-1, 0)));
             assertEquals(entity, simulator.entityAt(new GridPoint(-1, 0)));
-            assertEquals(List.of(entity), simulator.heldEntities("carrier"));
+            assertEquals(List.of(entity), simulator.heldEntities(0));
             assertEquals(1, simulator.grabsAt(new GridPoint(-1, 0)));
-            assertEquals(new GridPoint(-1, 1), simulator.mechanism("carrier").position());
+            assertEquals(new GridPoint(-1, 1), simulator.mechanism(0).position());
             assertEquals(2, simulator.glyphState("throwing"));
             assertEquals(0, simulator.pendingGlyphSpawnCount());
             assertNull(simulator.atomAt(new GridPoint(0, 0)));

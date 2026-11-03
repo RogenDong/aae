@@ -43,12 +43,12 @@ public final class GuiDemoMain {
 
         return new SimulationPlan(
                 List.of(// 机械臂
-                        new MechanismSpec("1", point(-1, 0), Direction.WEST, InstructionTape.looping("feqqerfeqqer"), 2),
-                        new MechanismSpec("2", point(0, 0), Direction.EAST, InstructionTape.looping("rdfardfardfa")),
-                        new MechanismSpec("3", point(1, 1), Direction.WEST, InstructionTape.looping("fdrafdrafdra")),
-                        new MechanismSpec("4", point(5, 0), Direction.WEST, InstructionTape.looping("fgggrgfgggrg"), 2),
-                        new MechanismSpec("5", point(6, 1), Direction.WEST, InstructionTape.looping("rgfgggrgfggg"), 2),
-                        new MechanismSpec("6", point(4, 0), Direction.WEST, InstructionTape.looping("ggrgfgggrgfg"), 2)
+                        new MechanismSpec(point(-1, 0), Direction.WEST, InstructionTape.looping("feqqerfeqqer"), 2),
+                        new MechanismSpec(point(0, 0), Direction.EAST, InstructionTape.looping("rdfardfardfa")),
+                        new MechanismSpec(point(1, 1), Direction.WEST, InstructionTape.looping("fdrafdrafdra")),
+                        new MechanismSpec(point(5, 0), Direction.WEST, InstructionTape.looping("fgggrgfgggrg"), 2),
+                        new MechanismSpec(point(6, 1), Direction.WEST, InstructionTape.looping("rgfgggrgfggg"), 2),
+                        new MechanismSpec(point(4, 0), Direction.WEST, InstructionTape.looping("ggrgfgggrgfg"), 2)
                 ),
                 List.of(ot1, ot2, dt1, dt2),
                 List.of(input1, input2, input3),
@@ -127,8 +127,8 @@ public final class GuiDemoMain {
             content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
             content.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
 
-            for (MechanismSpec mechanism : plan.mechanisms()) {
-                TapeRow row = new TapeRow(mechanism);
+            for (int index = 0; index < plan.mechanisms().size(); index++) {
+                TapeRow row = new TapeRow(index, plan.mechanisms().get(index));
                 rows.add(row);
                 content.add(row.panel);
             }
@@ -152,11 +152,11 @@ public final class GuiDemoMain {
         private final List<JLabel> instructions = new ArrayList<>();
         private final Color normalColor;
 
-        private TapeRow(MechanismSpec mechanism) {
+        private TapeRow(int mechanismIndex, MechanismSpec mechanism) {
             tape = mechanism.tape();
-            JLabel idLabel = new JLabel("Mechanism " + mechanism.id() + ":");
-            idLabel.setPreferredSize(new Dimension(100, idLabel.getPreferredSize().height));
-            panel.add(idLabel);
+            JLabel numberLabel = new JLabel("Mechanism " + (mechanismIndex + 1) + ":");
+            numberLabel.setPreferredSize(new Dimension(100, numberLabel.getPreferredSize().height));
+            panel.add(numberLabel);
 
             Font tapeFont = new Font(Font.MONOSPACED, Font.PLAIN, 14);
             normalColor = UIManager.getColor("Label.foreground");

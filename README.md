@@ -14,7 +14,8 @@
 - `OrthogonalSimulator` 保存可变运行态，并按 decode → intent → conflict → transform → commit → produce → consume 推进每个周期。
 - `SimulationPlan` 构造时校验静态布局：I/O 模板不能与任何其他 I/O、机构初始基座、轨道节点或符文占位重叠；符文不能与其他符文、机构初始基座或轨道节点重叠。机构之间不能共享初始基座格点；机构可以位于轨道上，臂杆和抓握点不计入静态占位。
 - 推进热路径不采样变换过程；每周期第二半周期结束时检查最终的分子/分子、分子/机构基座和机构基座之间的重叠，冲突会回滚并停机。两个机构可以在同一周期交换基座位置，只要最终格点不同。
-- `mechanism(id)` 和 `mechanisms()` 提供机构的只读状态值，包含基座位置、朝向、长度和抓取状态。
+- 机构没有 ID，按 `SimulationPlan.mechanisms()` 的声明顺序定位，API 下标从 `0` 开始且在运行、回滚和重置期间保持稳定；下标只适用于当前计划。GUI 按相同顺序显示从 `1` 开始的编号。
+- `mechanism(index)` 和 `mechanisms()` 提供机构的只读状态值，包含基座位置、朝向、长度和抓取状态；`heldEntities(index)` 返回指定机构当前持有的实体。单机构查询下标越界时抛出 `IndexOutOfBoundsException`。
 - 原子类型与化学键类型都是 `byte` 且由调用方定义编码：项目只比较数值、不认识类型名称，内部只依赖两条约定——键字节 `0` 表示无键、`0xFF` 表示本周期临时键。`Atom` 由一个类型字节加四个方向的键字节组成，是不可变值对象。
 - `AtomGrid` 是 `GridPoint -> Atom` 的稀疏映射，成键时两端互惠写入；单侧键不构成连通。
 - `MoleculeBfs` 用显式队列做广度优先搜索，返回不可变的 `Molecule`；搜索过程不改动网格，也不使用递归。
@@ -89,12 +90,10 @@ SimulationPlan plan = SimulationPlan.withTracks(
         new GridPoint(1, 0),
         new GridPoint(2, 0))),
     new MechanismSpec(
-        "left",
         new GridPoint(0, 0),
         Direction.EAST,
         InstructionTape.looping("g")),
     new MechanismSpec(
-        "right",
         new GridPoint(2, 0),
         Direction.WEST,
         InstructionTape.looping("t")));
@@ -104,8 +103,8 @@ simulator.step();
 
 // 两个机构都试图移动到 (1,0)，冲突周期回滚并停机。
 // simulator.isHalted() == true
-// simulator.mechanism("left").position().equals(new GridPoint(0, 0))
-// simulator.mechanism("right").position().equals(new GridPoint(2, 0))
+// simulator.mechanism(0).position().equals(new GridPoint(0, 0))
+// simulator.mechanism(1).position().equals(new GridPoint(2, 0))
 ```
 
 指令带字符：
@@ -126,11 +125,10 @@ simulator.step();
 
 空白字符会被解析器忽略。指令带可以只运行一次，也可以循环，并可设置开始周期。
 所有机构使用同一个 `MechanismSpec` 模型；出现 `w`/`s` 指令时即表现为活塞，不需要
-单独的活塞子类型。长度范围为 `[1, 4)`，旧的四参数构造器默认长度为 1：
+单独的活塞子类型。长度范围为 `[1, 4)`，不传长度的三参数构造器默认长度为 1：
 
 ```java
 MechanismSpec piston = new MechanismSpec(
-        "piston",
         new GridPoint(0, 0),
         Direction.EAST,
         2,
@@ -240,7 +238,7 @@ grid.bond(left, Direction.EAST, (byte) 3, (byte) 2);
 ```java
 SimulationPlan plan = new SimulationPlan(
         List.of(new MechanismSpec(
-                "arm", new GridPoint(0, 1), Direction.NORTH,
+                new GridPoint(0, 1), Direction.NORTH,
                 InstructionTape.looping(".fgr"))),
         List.of(TrackSpec.orthogonal(
                 new GridPoint(0, 1),
