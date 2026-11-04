@@ -25,7 +25,7 @@ class SimulationPlanLayoutTest {
             List<MechanismSpec> arms = secondKind.equals("mechanism")
                     ? List.of(arm(ORIGIN, Direction.EAST, 1)) : List.of();
             List<TrackSpec> tracks = secondKind.equals("track")
-                    ? List.of(TrackSpec.orthogonal(ORIGIN)) : List.of();
+                    ? List.of(new TrackSpec(ORIGIN)) : List.of();
             List<GlyphSpec> glyphs = firstKind.equals("glyph")
                     ? (secondKind.equals("glyph")
                         ? List.of(new GlyphSpec(type, ORIGIN), new GlyphSpec(type, ORIGIN))
@@ -91,14 +91,13 @@ class SimulationPlanLayoutTest {
     }
 
     @Test
-    void allowsTrackJunctionsAndDistinctArmBasesOnTracks() {
+    void allowsMixedTrackAndDistinctArmBasesOnItsNodes() {
         var plan = assertDoesNotThrow(() -> new SimulationPlan(List.of(arm(ORIGIN, Direction.EAST, 1),
-                arm(new GridPoint(1, 0), Direction.WEST, 1)), List.of(
-                        TrackSpec.orthogonal(new GridPoint(-1, 0), ORIGIN),
-                        TrackSpec.orthogonal(ORIGIN, new GridPoint(1, 0)))));
+                arm(new GridPoint(1, 1), Direction.WEST, 1)), List.of(
+                        new TrackSpec(new GridPoint(-1, 0), ORIGIN, new GridPoint(1, 1)))));
         var simulator = assertDoesNotThrow(() -> new OrthogonalSimulator(plan));
         assertEquals(ORIGIN, simulator.mechanism(0).position());
-        assertEquals(new GridPoint(1, 0), simulator.mechanism(1).position());
+        assertEquals(new GridPoint(1, 1), simulator.mechanism(1).position());
     }
 
     @Test
@@ -128,8 +127,9 @@ class SimulationPlanLayoutTest {
         String type = typeId();
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.of(type,
                 List.of(ORIGIN, new GridPoint(2, 2)), context -> {}))) {
-            var plan = assertDoesNotThrow(() -> new SimulationPlan(List.of(), List.of(TrackSpec.diagonal(
-                    new GridPoint(-2, -2), new GridPoint(-1, -1))),
+            var plan = assertDoesNotThrow(() -> new SimulationPlan(
+                    List.of(),
+                    List.of(TrackBuilder.start(-2, -2).eastSouth().noLoop()),
                     List.of(InputSpec.of(new AtomPlacement(new GridPoint(-2, -1), ATOM),
                             new AtomPlacement(new GridPoint(1, 1), ATOM))),
                     List.of(OutputSpec.single(new GridPoint(1, 0), ATOM)),
@@ -146,9 +146,12 @@ class SimulationPlanLayoutTest {
         try (var handle = GlyphRegistry.global().register(new GlyphDefinition<>(type, List.of(ORIGIN),
                 factories::incrementAndGet, (context, state) -> { callbacks.incrementAndGet(); return state; }))) {
             Executable construct = () -> new SimulationPlan(
-                    List.of(arm(ORIGIN, Direction.EAST, 1)), List.of(TrackSpec.orthogonal(ORIGIN)),
-                    List.of(InputSpec.single(ORIGIN, ATOM)), List.of(),
-                    List.of(new GlyphSpec(type, ORIGIN)), 1);
+                    List.of(arm(ORIGIN, Direction.EAST, 1)),
+                    List.of(new TrackSpec(ORIGIN)),
+                    List.of(InputSpec.single(ORIGIN, ATOM)),
+                    List.of(),
+                    List.of(new GlyphSpec(type, ORIGIN)),
+                    1);
             String message = assertThrows(IllegalArgumentException.class, construct).getMessage();
             assertEquals("input[0] overlaps mechanism[0] at " + ORIGIN, message);
             assertEquals(message, assertThrows(IllegalArgumentException.class, construct).getMessage());

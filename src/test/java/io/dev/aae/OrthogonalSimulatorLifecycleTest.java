@@ -378,10 +378,7 @@ class OrthogonalSimulatorLifecycleTest {
 
     private static MechanismSpec mechanism(
             long x, long y, Direction direction, String program) {
-        return new MechanismSpec(
-                new GridPoint(x, y),
-                direction,
-                InstructionTape.looping(program));
+        return new MechanismSpec(new GridPoint(x, y), direction, program);
     }
 
     private static TrackSpec track(long... coordinates) {
@@ -392,7 +389,7 @@ class OrthogonalSimulatorLifecycleTest {
         for (int index = 0; index < points.length; index++) {
             points[index] = new GridPoint(coordinates[index * 2], coordinates[index * 2 + 1]);
         }
-        return TrackSpec.orthogonal(points);
+        return new TrackSpec(points);
     }
 
     private static Atom sampleAtom() {

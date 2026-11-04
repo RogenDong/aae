@@ -167,16 +167,17 @@ public final class OrthogonalRenderer {
             List<GridPoint> points = track.points();
             if (points.size() < 2) continue;
 
-            Color color = track.type() == TrackType.DIAGONAL ? Color.BLUE : Color.RED;
             GridPoint last = points.get(points.size() - 1);
             for (int i = 1; i < points.size(); i++) {
-                renderTrack(g2, originX, originY, color, points.get(i - 1), points.get(i));
+                renderTrack(g2, originX, originY, trackColor(points.get(i - 1), points.get(i)),
+                        points.get(i - 1), points.get(i));
             }
             if (track.isLoop()) {
-                renderTrack(g2, originX, originY, color, last, points.get(0));
+                renderTrack(g2, originX, originY, trackColor(last, points.get(0)), last, points.get(0));
             }
             // 绘制轨道 +/- 方向
-            renderTrackDirection(g2, originX, originY, color, points.get(0), last);
+            renderTrackDirection(g2, originX, originY, trackColor(points.get(0), points.get(1)),
+                    trackColor(points.get(points.size() - 2), last), points.get(0), last);
         }
 
         // 每一层都先画键、再画原子本体，避免后绘制的键压住相邻原子。
@@ -492,15 +493,21 @@ public final class OrthogonalRenderer {
         g2.drawLine((int) x1, (int) y1, (int) x2, (int) y2);
     }
 
-    private void renderTrackDirection(Graphics2D g2, double originX, double originY, Color color, GridPoint first, GridPoint last) {
+    private static Color trackColor(GridPoint from, GridPoint to) {
+        return from.x() != to.x() && from.y() != to.y() ? Color.BLUE : Color.RED;
+    }
+
+    private void renderTrackDirection(Graphics2D g2, double originX, double originY,
+            Color firstColor, Color lastColor, GridPoint first, GridPoint last) {
         int cellSize = config.cellSize();
-        g2.setColor(color);
+        g2.setColor(firstColor);
         g2.setFont(new Font("SansSerif", Font.BOLD, 24));
 
         var x1 = originX + first.x() * cellSize;
         var y1 = originY + first.y() * cellSize;
         g2.drawString("-", (int) x1, (int) y1);
 
+        g2.setColor(lastColor);
         var x2 = originX + last.x() * cellSize;
         var y2 = originY + last.y() * cellSize;
         g2.drawString("+", (int) x2, (int) y2);

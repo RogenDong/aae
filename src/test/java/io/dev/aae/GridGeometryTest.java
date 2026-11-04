@@ -18,6 +18,36 @@ class GridGeometryTest {
     }
 
     @Test
+    void diagonalTranslationsUseTheSpecifiedDirectionMapping() {
+        // 方位指引按东北、东南、西南、西北映射，负距离沿对应反向移动。
+        GridPoint origin = new GridPoint(10, -4);
+        Direction[] directions = {Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST};
+        GridPoint[] deltas = {new GridPoint(1, -1), new GridPoint(1, 1),
+                new GridPoint(-1, 1), new GridPoint(-1, -1)};
+        for (int i = 0; i < directions.length; i++) {
+            GridPoint delta = deltas[i];
+            assertEquals(origin.add(delta), origin.translateDiagonal(directions[i]));
+            for (long distance : new long[] {-3, 0, 4}) {
+                assertEquals(new GridPoint(origin.x() + delta.x() * distance,
+                        origin.y() + delta.y() * distance), origin.translateDiagonal(directions[i], distance));
+            }
+        }
+        assertThrows(NullPointerException.class, () -> origin.translateDiagonal(null));
+        assertThrows(ArithmeticException.class,
+                () -> new GridPoint(Long.MAX_VALUE, 0).translateDiagonal(Direction.NORTH));
+        assertThrows(ArithmeticException.class,
+                () -> new GridPoint(0, Long.MAX_VALUE).translateDiagonal(Direction.EAST));
+        assertThrows(ArithmeticException.class,
+                () -> new GridPoint(Long.MIN_VALUE, 0).translateDiagonal(Direction.SOUTH));
+        assertThrows(ArithmeticException.class,
+                () -> new GridPoint(0, Long.MIN_VALUE).translateDiagonal(Direction.WEST));
+        assertEquals(new GridPoint(0, 0), new GridPoint(Long.MIN_VALUE, Long.MIN_VALUE)
+                .translateDiagonal(Direction.WEST, Long.MIN_VALUE));
+        assertEquals(new GridPoint(-1, -1), new GridPoint(Long.MAX_VALUE, Long.MAX_VALUE)
+                .translateDiagonal(Direction.EAST, Long.MIN_VALUE));
+    }
+
+    @Test
     void translateAgreesWithDirectionDeltas() {
         GridPoint origin = new GridPoint(12, -7);
 

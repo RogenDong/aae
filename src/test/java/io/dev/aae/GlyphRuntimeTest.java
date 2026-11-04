@@ -623,7 +623,7 @@ class GlyphRuntimeTest {
         for (int index = 0; index < points.length; index++) {
             points[index] = new GridPoint(coordinates[index * 2], coordinates[index * 2 + 1]);
         }
-        return TrackSpec.orthogonal(points);
+        return new TrackSpec(points);
     }
 
     private static GlyphSpec glyph(String typeId, long x, long y, Direction direction) {

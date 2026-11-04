@@ -29,6 +29,26 @@ public record MechanismSpec(
         this(initialPosition, initialDirection, length, tape);
     }
 
+    /** 使用默认长度一格。 */
+    public MechanismSpec(
+            GridPoint initialPosition,
+            Direction initialDirection,
+            String tape) {
+        this(initialPosition, initialDirection, tape, MIN_LENGTH);
+    }
+
+    /** 使用默认长度一格。 */
+    public MechanismSpec(
+            GridPoint initialPosition,
+            Direction initialDirection,
+            String tape,
+            int length) {
+        this(initialPosition,
+                initialDirection,
+                InstructionTape.parse(tape, 0, InstructionTape.Playback.LOOPING),
+                length);
+    }
+
     public MechanismSpec {
         Objects.requireNonNull(initialPosition, "initialPosition");
         Objects.requireNonNull(initialDirection, "initialDirection");

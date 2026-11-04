@@ -15,10 +15,7 @@ class OrthogonalSimulatorTest {
 
     @Test
     void movementFollowsTrackPolarityThroughTurnsInsteadOfMechanismFacing() {
-        TrackSpec track = TrackSpec.orthogonal(
-                new GridPoint(0, 0),
-                new GridPoint(1, 0),
-                new GridPoint(1, -1));
+        TrackSpec track = TrackBuilder.start(0, 0).east().eastSouth().noLoop();
         OrthogonalSimulator simulator = simulator(
                 List.of(track),
                 mechanism(0, 0, Direction.SOUTH, "ggt"));
@@ -28,7 +25,8 @@ class OrthogonalSimulatorTest {
         assertEquals(Direction.SOUTH, simulator.mechanism(0).direction());
 
         simulator.step();
-        assertEquals(new GridPoint(1, -1), simulator.mechanism(0).position());
+        assertEquals(new GridPoint(2, 1), simulator.mechanism(0).position());
+        assertEquals(Direction.SOUTH, simulator.mechanism(0).direction());
 
         simulator.step();
         assertEquals(new GridPoint(1, 0), simulator.mechanism(0).position());
@@ -36,10 +34,7 @@ class OrthogonalSimulatorTest {
 
     @Test
     void diagonalTrackCanTurnBetweenDiagonalDirections() {
-        TrackSpec track = TrackSpec.diagonal(
-                new GridPoint(0, 0),
-                new GridPoint(1, -1),
-                new GridPoint(0, -2));
+        TrackSpec track = TrackBuilder.start(0, 0).eastNorth().westNorth().noLoop();
         OrthogonalSimulator simulator = simulator(
                 List.of(track),
                 mechanism(0, 0, Direction.WEST, "gg"));
@@ -52,8 +47,7 @@ class OrthogonalSimulatorTest {
 
     @Test
     void openEndpointsAndCellsWithoutTrackAreStationary() {
-        TrackSpec track = TrackSpec.orthogonal(
-                new GridPoint(0, 0), new GridPoint(1, 0));
+        TrackSpec track = TrackBuilder.start(0, 0).east().noLoop();
         OrthogonalSimulator simulator = simulator(
                 List.of(track),
                 mechanism(0, 0, Direction.EAST, "t"),
@@ -68,21 +62,24 @@ class OrthogonalSimulatorTest {
     }
 
     @Test
-    void adjacentEndsOfLongTrackFormALoop() {
-        TrackSpec loop = squareLoop(0, 0);
-        OrthogonalSimulator simulator = simulator(
-                List.of(loop), mechanism(0, 0, Direction.NORTH, "gggg"));
+    void onlyExplicitMixedLoopsWrapAtAdjacentEnds() {
+        var trackBuilder = TrackBuilder.start(0, 0).east().south();
+        OrthogonalSimulator closed = simulator(List.of(trackBuilder.loop()),
+                mechanism(0, 0, Direction.NORTH, "ggg"));
+        OrthogonalSimulator open = simulator(List.of(trackBuilder.noLoop()),
+                mechanism(0, 0, Direction.NORTH, "ggg"));
 
-        simulator.run(4);
+        closed.run(3);
+        open.run(3);
 
-        assertEquals(new GridPoint(0, 0), simulator.mechanism(0).position());
+        assertEquals(new GridPoint(0, 0), closed.mechanism(0).position());
+        assertEquals(new GridPoint(1, 1), open.mechanism(0).position());
     }
 
     @ParameterizedTest
     @CsvSource({"2,t", "1,."})
     void overlappingMechanismDestinationsHaltAndRollBack(long rightX, String rightProgram) {
-        TrackSpec track = TrackSpec.orthogonal(
-                new GridPoint(0, 0), new GridPoint(1, 0), new GridPoint(2, 0));
+        TrackSpec track = TrackBuilder.start(0, 0).east().east().noLoop();
         OrthogonalSimulator simulator = simulator(
                 List.of(track),
                 mechanism(0, 0, Direction.NORTH, "g"),
@@ -102,8 +99,7 @@ class OrthogonalSimulatorTest {
 
     @Test
     void mechanismsMaySwapPositionsInOneCycle() {
-        TrackSpec track = TrackSpec.orthogonal(
-                new GridPoint(0, 0), new GridPoint(1, 0));
+        TrackSpec track = TrackBuilder.start(0, 0).east().noLoop();
         OrthogonalSimulator simulator = simulator(
                 List.of(track),
                 mechanism(0, 0, Direction.NORTH, "g"),
@@ -154,8 +150,8 @@ class OrthogonalSimulatorTest {
         GridPoint offset = new GridPoint(100, -50);
         TrackSpec originalTrack = squareLoop(3, 4);
         TrackSpec translatedTrack = new TrackSpec(
-                originalTrack.type(),
-                originalTrack.points().stream().map(point -> point.add(offset)).toList());
+                originalTrack.points().stream().map(point -> point.add(offset)).toList(),
+                originalTrack.isLoop());
         MechanismSpec originalSpec = mechanism(3, 4, Direction.WEST, "ggagdt");
         MechanismSpec translatedSpec = new MechanismSpec(
                 originalSpec.initialPosition().add(offset),
@@ -273,7 +269,7 @@ class OrthogonalSimulatorTest {
 
     @Test
     void trackMovementSupportsCoordinatesAtTheLongBoundary() {
-        TrackSpec track = TrackSpec.orthogonal(
+        TrackSpec track = new TrackSpec(
                 new GridPoint(Long.MAX_VALUE - 1, Long.MIN_VALUE),
                 new GridPoint(Long.MAX_VALUE, Long.MIN_VALUE));
         OrthogonalSimulator simulator = simulator(
@@ -301,18 +297,11 @@ class OrthogonalSimulatorTest {
             long y,
             Direction direction,
             String program) {
-        return new MechanismSpec(
-                new GridPoint(x, y),
-                direction,
-                InstructionTape.looping(program));
+        return new MechanismSpec(new GridPoint(x, y), direction, program);
     }
 
     private static TrackSpec squareLoop(long x, long y) {
-        return TrackSpec.orthogonal(
-                new GridPoint(x, y),
-                new GridPoint(x + 1, y),
-                new GridPoint(x + 1, y + 1),
-                new GridPoint(x, y + 1));
+        return TrackBuilder.start(x, y).east().south().west().loop();
     }
 
     private static String randomProgram(Random random, int length) {

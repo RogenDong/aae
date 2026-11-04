@@ -63,9 +63,10 @@ class SimulationPlanTest {
     @Test
     void tracksAreImmutableAndExposeCompiledPlusMinusDestinations() {
         GridPoint first = new GridPoint(0, 0);
-        GridPoint second = new GridPoint(1, 1);
+        GridPoint second = new GridPoint(1, 0);
+        GridPoint last = new GridPoint(2, 1);
         List<TrackSpec> tracks = new ArrayList<>(
-                List.of(TrackSpec.diagonal(first, second)));
+                List.of(new TrackSpec(first, second, last)));
 
         SimulationPlan plan = new SimulationPlan(List.of(), tracks);
         tracks.clear();
@@ -73,8 +74,16 @@ class SimulationPlanTest {
         assertEquals(1, plan.tracks().size());
         assertEquals(second, plan.trackDestination(first, TrackDirection.PLUS));
         assertEquals(first, plan.trackDestination(second, TrackDirection.MINUS));
+        assertEquals(last, plan.trackDestination(second, TrackDirection.PLUS));
+        assertEquals(second, plan.trackDestination(last, TrackDirection.MINUS));
+        assertEquals(last, plan.trackDestination(last, TrackDirection.PLUS));
+        GridPoint offTrack = new GridPoint(20, 20);
+        assertEquals(offTrack, plan.trackDestination(offTrack, TrackDirection.PLUS));
         assertEquals(first, plan.trackDestination(first, TrackDirection.MINUS));
         assertThrows(UnsupportedOperationException.class, () -> plan.tracks().clear());
+        var overlap = assertThrows(InvalidTrackOverlapException.class,
+                () -> new SimulationPlan(List.of(), List.of(plan.tracks().get(0), new TrackSpec(last))));
+        assertEquals("track[1] overlaps track[0] at " + last, overlap.getMessage());
     }
 
     @Test

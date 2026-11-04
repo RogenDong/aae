@@ -5,48 +5,59 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
-/** 一条由同类单位步连接而成的不可变有序轨道。 */
-public record TrackSpec(TrackType type, List<GridPoint> points) {
+/** 由正交或对角单位步连接的不可变有序轨道；闭环必须显式声明。 */
+public record TrackSpec(List<GridPoint> points, boolean isLoop) {
+
+    public TrackSpec(List<GridPoint> points) {
+        this(points, false);
+    }
+
+    public TrackSpec(GridPoint... points) {
+        this(List.of(points), false);
+    }
+
+    public TrackSpec(boolean isLoop, GridPoint... points) {
+        this(List.of(points), isLoop);
+    }
 
     public TrackSpec {
-        Objects.requireNonNull(type, "type");
         Objects.requireNonNull(points, "points");
-        points = List.copyOf(points);
         if (points.isEmpty()) {
             throw new IllegalArgumentException("track must contain at least one point");
         }
 
+        var first = points.get(0);
+        var last = points.get(points.size() - 1);
+
+        if (isLoop && points.size() > 2 && first.equals(last)) {
+            points = List.copyOf(points.subList(0, points.size() - 1));
+            last = points.get(points.size() - 1);
+        } else points = List.copyOf(points);
+
         Set<GridPoint> uniquePoints = new HashSet<>();
         GridPoint previous = null;
         for (GridPoint point : points) {
-            Objects.requireNonNull(point, "points must not contain null");
             if (!uniquePoints.add(point)) {
                 throw new IllegalArgumentException("duplicate track point: " + point);
             }
-            if (previous != null && !type.isUnitStep(previous, point)) {
-                throw new IllegalArgumentException(
-                        "track segment is not a " + type + " unit step: "
-                                + previous + " -> " + point);
+            if (previous != null && noUnitStep(previous, point)) {
+                throw new IllegalArgumentException("track segment is not a unit step: " + previous + " -> " + point);
             }
             previous = point;
         }
+        if (isLoop && (points.size() < 3 || noUnitStep(last, first))) {
+            throw new IllegalArgumentException("loop requires at least three distinct points and a unit closing step");
+        }
     }
 
-    /** 创建只含正交单位步的轨道。 */
-    public static TrackSpec orthogonal(GridPoint... points) {
-        Objects.requireNonNull(points, "points");
-        return new TrackSpec(TrackType.ORTHOGONAL, List.of(points));
-    }
-
-    /** 创建只含对角单位步的轨道。 */
-    public static TrackSpec diagonal(GridPoint... points) {
-        Objects.requireNonNull(points, "points");
-        return new TrackSpec(TrackType.DIAGONAL, List.of(points));
-    }
-
-    /** 首尾还能以同类型单位步相连时，该轨道形成闭环。 */
-    public boolean isLoop() {
-        return points.size() > 2
-                && type.isUnitStep(points.get(points.size() - 1), points.get(0));
+    public static boolean noUnitStep(GridPoint from, GridPoint to) {
+        long dx, dy;
+        try {
+            dx = Math.subtractExact(to.x(), from.x());
+            dy = Math.subtractExact(to.y(), from.y());
+        } catch (ArithmeticException ignored) {
+            return true;
+        }
+        return dx < -1 || dx > 1 || dy < -1 || dy > 1 || (dx == 0 && dy == 0);
     }
 }

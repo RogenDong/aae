@@ -9,7 +9,7 @@
 - 坐标使用不可变 `GridPoint(x, y)`；`x` 向东递增，`y` 向南递增。
 - `Direction` 提供四邻接移动、90 度旋转、反向和局部坐标变换。符文局部形状按朝东状态定义，`GlyphSpec` 默认朝东；局部正 x 沿实例朝向，局部正 y 沿其右侧。
 - `SimulationPlan`、`TrackSpec`、`MechanismSpec`、`InstructionTape` 是不可变定义；机构长度为 `1..3`，位置始终表示基座。
-- `TrackType` 区分 `ORTHOGONAL` 与 `DIAGONAL`；同一条轨道不能混用两类单位步。不同轨道可以在合法的开放端点处衔接；闭环重叠、三轨重叠和非端点重叠会在计划构造时拒绝。
+- 一条轨道可以自由混合正交与对角单位步，闭环必须显式声明。不同轨道禁止共享任何格点，包括端点和单点轨道；线段可在格子中心交叉，交叉处不连接。
 - `MOVE_FORWARD`/`MOVE_BACKWARD` 分别沿轨道有序点列的 `+`/`-` 方向移动，与机构朝向无关；开放端点和非轨道格点都保持原地。
 - `OrthogonalSimulator` 保存可变运行态，并按 decode → intent → conflict → transform → commit → produce → consume 推进每个周期。
 - `SimulationPlan` 构造时校验静态布局：I/O 模板不能与任何其他 I/O、机构初始基座、轨道节点或符文占位重叠；符文不能与其他符文、机构初始基座或轨道节点重叠。机构之间不能共享初始基座格点；机构可以位于轨道上，臂杆和抓握点不计入静态占位。
@@ -87,10 +87,10 @@ macOS / Linux 使用 `./gradlew runExample`。运行时需要图形桌面环境�
 
 ```java
 SimulationPlan plan = SimulationPlan.withTracks(
-    List.of(TrackSpec.orthogonal(
+    List.of(new TrackSpec(List.of(
         new GridPoint(0, 0),
         new GridPoint(1, 0),
-        new GridPoint(2, 0))),
+        new GridPoint(2, 0)))),
     new MechanismSpec(
         new GridPoint(0, 0),
         Direction.EAST,
@@ -146,26 +146,26 @@ MechanismSpec piston = new MechanismSpec(
 因此轨道转弯时不需要根据机构朝向或进入方向选路。`TrackDirection.PLUS` 与
 `TrackDirection.MINUS` 是这两个方向的显式 API 表示。
 
-- `TrackSpec.orthogonal(...)` 只接受水平或竖直的单位步，允许在四个正交方向之间转折。
-- `TrackSpec.diagonal(...)` 只接受横纵坐标都变化一格的单位步，允许在四个对角方向之间转折。
-- 同一条轨道不能混用正交与对角线段；轨道内不能重复格点。不同轨道可以共享一个格点，但该点必须是两条开放轨道的一头一尾；闭环重叠、三轨重叠和非端点重叠会抛 `InvalidTrackOverlapException`。
-- 机构在合法衔接点移动时按目标 `PLUS/MINUS` 方向动态选轨；两条轨道同时可走或同时不可走时抛 `UndefinedTrackSelectionException`。
-- 开放轨道首点没有 `-` 出口、末点没有 `+` 出口；沿不存在的出口移动是空操作。机构不在轨道上时，`t`/`g` 同样是空操作。
-- 三个及以上格点的轨道如果末点到首点仍是同类型单位步，会自动补上闭合边；不要在点列末尾重复首点。
+- 使用 `new TrackSpec(points)` 创建开放轨道，或使用 `new TrackSpec(points, true)` 显式创建闭环；点列按顺序支持水平、竖直和对角单位步的任意混合。
+- 轨道内部不能重复格点。显式闭环可以在末尾重复一次起点，构造时将其移除；`points()` 返回不可变的规范化节点列表。
+- 不同轨道禁止共享任何格点，包括端点、内部节点、闭环节点和单点轨道。共享节点会在计划构造时抛出 `InvalidTrackOverlapException`，原因统一为 `TRACK_OVERLAP`，消息包含冲突坐标及两条轨道从 `0` 开始的声明下标。
+- 线段可以在格子中心交叉，只要不共享格点；交叉处不建立连接。
+- 开放轨道首点没有 `-` 出口、末点没有 `+` 出口；沿不存在的出口移动是空操作。机构不在轨道上时，`t`/`g` 同样是空操作。单点轨道参与布局占位，但没有移动边。
+- 闭环至少包含三个不同节点，末点到首点必须是一单位步；首尾相邻但未显式声明闭环时仍然开放。空路径、重复节点、非单位步及非法闭环抛 `IllegalArgumentException`；坐标计算溢出抛 `ArithmeticException`。
 - 轨道移动只平移机构基座及其携带实体，不改变机构朝向。
 
 只含机构时可用 `SimulationPlan.withTracks(List<TrackSpec>, MechanismSpec...)`；带输入输出时，
 完整构造器参数依次为机构、轨道、输入、输出和目标输出次数：
 
 ```java
-TrackSpec diagonal = TrackSpec.diagonal(
+TrackSpec mixed = new TrackSpec(List.of(
         new GridPoint(0, 0),
-        new GridPoint(1, 1),
-        new GridPoint(0, 2));
+        new GridPoint(1, 0),
+        new GridPoint(2, 1)));
 
 SimulationPlan plan = new SimulationPlan(
         mechanisms,
-        List.of(diagonal),
+        List.of(mixed),
         inputs,
         outputs,
         targetOutputs);
@@ -242,9 +242,9 @@ SimulationPlan plan = new SimulationPlan(
         List.of(new MechanismSpec(
                 new GridPoint(0, 1), Direction.NORTH,
                 InstructionTape.looping(".fgr"))),
-        List.of(TrackSpec.orthogonal(
+        List.of(new TrackSpec(List.of(
                 new GridPoint(0, 1),
-                new GridPoint(-1, 1))),
+                new GridPoint(-1, 1)))),
         List.of(InputSpec.single(new GridPoint(0, 0), Atom.of((byte) 1))),
         List.of(OutputSpec.single(new GridPoint(-1, 0), Atom.of((byte) 1))),
         1);

@@ -1,11 +1,11 @@
 package io.dev.aae;
 
-/** 轨道重叠不满足静态衔接规则时的具体异常类型。 */
-public final class InvalidTrackOverlapException extends InvalidTrackNetworkException {
+/** 不同轨道声明共享格点时的具体异常类型。 */
+public final class InvalidTrackOverlapException extends IllegalArgumentException {
 
     private static final long serialVersionUID = 1L;
 
-    public InvalidTrackOverlapException(Reason reason, String message) {
-        super(reason, message);
+    public InvalidTrackOverlapException(String message) {
+        super(message);
     }
 }

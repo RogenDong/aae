@@ -106,31 +106,34 @@ class MechanismMotionTest {
     }
 
     @Test
-    void diagonalTrackTurnsCarryTheGrabbedMoleculeByTheSameOffset() {
+    void mixedTrackTurnsCarryTheGrabbedMoleculeByTheSameOffset() {
         Atom grabbed = sampleAtom().withBond(Direction.WEST, (byte) 2);
         Atom attached = blockerAtom().withBond(Direction.EAST, (byte) 2);
         MechanismSpec arm = new MechanismSpec(
                 new GridPoint(0, 1),
                 Direction.NORTH,
                 InstructionTape.once("fgg"));
-        TrackSpec track = TrackSpec.diagonal(
-                new GridPoint(0, 1),
-                new GridPoint(1, 0),
-                new GridPoint(0, -1));
+        // (0,1) >> (1,1) >> (2,0)
+        TrackSpec track = TrackBuilder.start(0, 1).east().eastNorth().noLoop();
         InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(0, 0), grabbed),
                 new AtomPlacement(new GridPoint(-1, 0), attached));
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
                 List.of(arm), List.of(track), List.of(input), List.of(), 1));
         simulator.init();
 
-        simulator.run(3);
-
-        assertEquals(new GridPoint(0, -1), simulator.mechanism(0).position());
+        simulator.run(2);
+        assertEquals(new GridPoint(1, 1), simulator.mechanism(0).position());
+        assertEquals(grabbed, simulator.atomAt(new GridPoint(1, 0)));
+        assertEquals(attached, simulator.atomAt(new GridPoint(0, 0)));
         assertEquals(Direction.NORTH, simulator.mechanism(0).direction());
-        assertEquals((byte) 2, simulator.atomAt(new GridPoint(0, -2)).bondType(Direction.WEST));
-        assertEquals((byte) 2, simulator.atomAt(new GridPoint(-1, -2)).bondType(Direction.EAST));
-        assertEquals(1, simulator.grabsAt(new GridPoint(0, -2)));
-        assertEquals(1, simulator.grabsAt(new GridPoint(-1, -2)));
+        simulator.step();
+
+        assertEquals(new GridPoint(2, 0), simulator.mechanism(0).position());
+        assertEquals(Direction.NORTH, simulator.mechanism(0).direction());
+        assertEquals((byte) 2, simulator.atomAt(new GridPoint(2, -1)).bondType(Direction.WEST));
+        assertEquals((byte) 2, simulator.atomAt(new GridPoint(1, -1)).bondType(Direction.EAST));
+        assertEquals(1, simulator.grabsAt(new GridPoint(2, -1)));
+        assertEquals(1, simulator.grabsAt(new GridPoint(1, -1)));
         assertFalse(simulator.isHalted());
     }
 
@@ -140,8 +143,7 @@ class MechanismMotionTest {
         GridPoint atomPosition = new GridPoint(Long.MAX_VALUE, 1);
         MechanismSpec arm = new MechanismSpec(
                 base, Direction.EAST, InstructionTape.once("fg"));
-        TrackSpec track = TrackSpec.diagonal(
-                base, new GridPoint(Long.MAX_VALUE, 0));
+        TrackSpec track = new TrackSpec(base, new GridPoint(Long.MAX_VALUE, 0));
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
                 List.of(arm),
                 List.of(track),

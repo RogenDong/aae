@@ -12,6 +12,10 @@ public record GridPoint(long x, long y) {
         return translate(direction, 1);
     }
 
+    public GridPoint translateDiagonal(Direction direction) {
+        return translateDiagonal(direction, 1);
+    }
+
     /**
      * 沿指定方位平移指定距离。正 y 指向南，因此 NORTH 减小 y、SOUTH 增大 y。
      *
@@ -27,6 +31,24 @@ public record GridPoint(long x, long y) {
             case EAST -> new GridPoint(Math.addExact(x, distance), y);
             case SOUTH -> new GridPoint(x, Math.addExact(y, distance));
             case WEST -> new GridPoint(Math.subtractExact(x, distance), y);
+        };
+    }
+
+    /**
+     * 沿对角线平移指定距离。Direction 表示旋转方位：
+     * NORTH 为东北、EAST 为东南、SOUTH 为西南、WEST 为西北。
+     *
+     * <p>这里按方位直接做精确加减，是为了让 {@code translateDiagonal(WEST, Long.MIN_VALUE)}
+     * 这类极端偏移在最终坐标仍然落在 long 范围内时也能成功；
+     * 对角方位映射由单元测试固化。</p>
+     */
+    public GridPoint translateDiagonal(Direction direction, long distance) {
+        Objects.requireNonNull(direction, "direction");
+        return switch (direction) {
+            case NORTH -> new GridPoint(Math.addExact(x, distance), Math.subtractExact(y, distance));
+            case EAST -> new GridPoint(Math.addExact(x, distance), Math.addExact(y, distance));
+            case SOUTH -> new GridPoint(Math.subtractExact(x, distance), Math.addExact(y, distance));
+            case WEST -> new GridPoint(Math.subtractExact(x, distance), Math.subtractExact(y, distance));
         };
     }
 

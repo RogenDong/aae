@@ -37,7 +37,7 @@ class CoHoldingTest {
     void stationaryCoHolderBlocksPistonMotion(String scenario, String instruction, int stationaryLength) {
         GridPoint stationaryBase = new GridPoint(0, stationaryLength);
         List<TrackSpec> tracks = scenario.equals("ENDPOINT")
-                ? List.of(TrackSpec.orthogonal(new GridPoint(-1, stationaryLength), stationaryBase))
+                ? List.of(new TrackSpec(new GridPoint(-1, stationaryLength), stationaryBase))
                 : List.of();
         OrthogonalSimulator simulator = simulator(
                 List.of(arm(-1, 0, Direction.EAST, 1, "fw"),
@@ -69,8 +69,8 @@ class CoHoldingTest {
         OrthogonalSimulator simulator = simulator(
                 List.of(arm(0, 1, Direction.NORTH, 1, "fg"),
                         arm(-1, 0, Direction.EAST, 1, "fg")),
-                List.of(TrackSpec.orthogonal(new GridPoint(-1, 1), new GridPoint(0, 1)),
-                        TrackSpec.orthogonal(new GridPoint(-1, 0), new GridPoint(-2, 0))),
+                List.of(TrackBuilder.start(-1, 1).east().noLoop(),
+                        TrackBuilder.start(-1, 0).west().noLoop()),
                 InputSpec.single(ORIGIN, ATOM));
         simulator.step();
 
@@ -111,7 +111,7 @@ class CoHoldingTest {
         OrthogonalSimulator simulator = simulator(
                 List.of(arm(1, 0, Direction.WEST, 1, "fr"),
                         arm(0, 1, Direction.NORTH, 1, "f" + motion)),
-                List.of(TrackSpec.orthogonal(new GridPoint(0, 1), new GridPoint(-1, 1))),
+                List.of(TrackBuilder.start(0, 1).west().noLoop()),
                 InputSpec.single(ORIGIN, ATOM));
         simulator.step();
         long entity = simulator.entityAt(ORIGIN);
@@ -135,8 +135,9 @@ class CoHoldingTest {
         OrthogonalSimulator simulator = simulator(
                 List.of(arm(0, 1, Direction.NORTH, 1, "fg"),
                         arm(1, -1, Direction.SOUTH, 1, "fg")),
-                List.of(TrackSpec.orthogonal(new GridPoint(0, 1), new GridPoint(-1, 1)),
-                        TrackSpec.orthogonal(new GridPoint(1, -1), new GridPoint(0, -1))),
+                List.of(
+                        TrackBuilder.start(0, 1).west().noLoop(),
+                        TrackBuilder.start(1, -1).west().noLoop()),
                 InputSpec.of(new AtomPlacement(ORIGIN, left),
                         new AtomPlacement(new GridPoint(1, 0), right)));
 
@@ -184,7 +185,7 @@ class CoHoldingTest {
                 : List.of(arm(1, 0, Direction.WEST, 1, "fg"),
                         arm(0, -1, Direction.SOUTH, 1, "ft"));
         List<TrackSpec> tracks = rotation ? List.of()
-                : List.of(TrackSpec.orthogonal(new GridPoint(1, 0), new GridPoint(1, -1), new GridPoint(0, -1)));
+                : List.of(TrackBuilder.start(1, 0).north().west().noLoop());
         OrthogonalSimulator simulator = simulator(arms, tracks, InputSpec.single(ORIGIN, ATOM));
         simulator.step();
         List<MechanismView> before = simulator.mechanisms();

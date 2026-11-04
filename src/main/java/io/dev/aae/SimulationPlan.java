@@ -85,7 +85,7 @@ public final class SimulationPlan {
         }
         for (int index = 0; index < tracks.size(); index++) {
             for (GridPoint point : tracks.get(index).points()) {
-                // 机构可位于轨道上，轨道也可在已由计划校验过的合法端点处相接。
+                // 机构可位于轨道上；跨轨道节点的唯一归属由 TrackNetwork 校验。
                 occupants.putIfAbsent(point, "track[" + index + "]");
             }
         }

@@ -32,21 +32,18 @@ public final class GuiDemoMain {
         GLYPH_HANDLES.add(GlyphRegistry.global().register(OMGlyphs.CALCIFICATION));
         GLYPH_HANDLES.add(GlyphRegistry.global().register(OMGlyphs.BONDING));
 
-        var ot1 = new TrackSpec(TrackType.ORTHOGONAL, List.of(point(5, 0), point(4, 0))); // ←
-        var ot2 = new TrackSpec(TrackType.ORTHOGONAL, List.of(point(5, 1), point(6, 1))); // →
-        var dt1 = new TrackSpec(TrackType.DIAGONAL, List.of(point(4, 0), point(5, 1)));   // ↘
-        var dt2 = new TrackSpec(TrackType.DIAGONAL, List.of(point(6, 1), point(5, 0)));   // ↖
+        var track = TrackBuilder.start(point(5, 0)).west().eastSouth().east().loop();
 
         return new SimulationPlan(
                 List.of(// 机械臂
-                        new MechanismSpec(point(-1, 0), Direction.WEST, InstructionTape.looping("feqqerfeqqer"), 2),
-                        new MechanismSpec(point(0, 0), Direction.EAST, InstructionTape.looping("rdfardfardfa")),
-                        new MechanismSpec(point(1, 1), Direction.WEST, InstructionTape.looping("fdrafdrafdra")),
-                        new MechanismSpec(point(5, 0), Direction.WEST, InstructionTape.looping("fgggrgfgggrg"), 2),
-                        new MechanismSpec(point(6, 1), Direction.WEST, InstructionTape.looping("rgfgggrgfggg"), 2),
-                        new MechanismSpec(point(4, 0), Direction.WEST, InstructionTape.looping("ggrgfgggrgfg"), 2)
+                        new MechanismSpec(point(-1, 0), Direction.WEST, "feqqerfeqqer", 2),
+                        new MechanismSpec(point(0, 0), Direction.EAST, "rdfardfardfa"),
+                        new MechanismSpec(point(1, 1), Direction.WEST, "fdrafdrafdra"),
+                        new MechanismSpec(point(5, 0), Direction.WEST, "fgggrgfgggrg", 2),
+                        new MechanismSpec(point(6, 1), Direction.WEST, "rgfgggrgfggg", 2),
+                        new MechanismSpec(point(4, 0), Direction.WEST, "ggrgfgggrgfg", 2)
                 ),
-                List.of(ot1, ot2, dt1, dt2),
+                List.of(track),
                 List.of(input1, input2, input3),
                 List.of(output),
                 List.of(calcification, bonder),

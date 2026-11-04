@@ -39,10 +39,6 @@ public final class InstructionTape {
         return EMPTY;
     }
 
-    public static InstructionTape looping(String program) {
-        return parse(program, 0, Playback.LOOPING);
-    }
-
     public static InstructionTape once(String program) {
         return parse(program, 0, Playback.ONCE);
     }
