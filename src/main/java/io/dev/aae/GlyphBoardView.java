@@ -181,7 +181,7 @@ final class GlyphBoardView implements GlyphBoard {
     }
 
     @Override
-    public TryResult setType(int placeholder, byte type) throws GlyphExecutionException {
+    public TryResult setType(int placeholder, int type) throws GlyphExecutionException {
         GridPoint position = resolve(placeholder);
         Atom.requireAtomCode(type);
         Atom atom = board.get(position);

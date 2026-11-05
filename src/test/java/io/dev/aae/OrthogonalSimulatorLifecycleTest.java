@@ -103,16 +103,16 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void outputConsumesOnlyAnExactTypeBondAndShapeMatch() {
-        Atom eastBonded = Atom.of((byte) 1).withBond(Direction.EAST, (byte) 2);
-        Atom mismatchedWest = Atom.of((byte) 4).withBond(Direction.WEST, (byte) 2);
-        Atom westBonded = Atom.of((byte) 5).withBond(Direction.WEST, (byte) 2);
+        Atom eastBonded = Atom.of(0).withBond(Direction.EAST, (byte) 2);
+        Atom mismatchedWest = Atom.of(0x0201).withBond(Direction.WEST, (byte) 2);
+        Atom westBonded = Atom.of(0x0101).withBond(Direction.WEST, (byte) 2);
 
         OrthogonalSimulator matching = pairSimulator(
                 List.of(eastBonded, westBonded), List.of(eastBonded, westBonded));
         OrthogonalSimulator wrongType = pairSimulator(
                 List.of(eastBonded, mismatchedWest), List.of(eastBonded, westBonded));
         OrthogonalSimulator missingBond = pairSimulator(
-                List.of(Atom.of((byte) 1), Atom.of((byte) 5)),
+                List.of(Atom.of(0), Atom.of(0x0101)),
                 List.of(eastBonded, westBonded));
 
         matching.run(5);
@@ -129,8 +129,8 @@ class OrthogonalSimulatorLifecycleTest {
         assertEquals(mismatchedWest, wrongType.atomAt(new GridPoint(-1, 0)));
         assertEquals(0, missingBond.outputCount(0));
         assertEquals(4, missingBond.boardSize());
-        assertEquals(Atom.of((byte) 1), missingBond.atomAt(new GridPoint(-2, 0)));
-        assertEquals(Atom.of((byte) 5), missingBond.atomAt(new GridPoint(-1, 0)));
+        assertEquals(Atom.of(0), missingBond.atomAt(new GridPoint(-2, 0)));
+        assertEquals(Atom.of(0x0101), missingBond.atomAt(new GridPoint(-1, 0)));
     }
 
     @Test
@@ -207,8 +207,8 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void grabbedMoleculesRotateAroundTheMechanismWithTheirBonds() {
-        Atom eastBonded = Atom.of((byte) 1).withBond(Direction.EAST, (byte) 2);
-        Atom westBonded = Atom.of((byte) 5).withBond(Direction.WEST, (byte) 2);
+        Atom eastBonded = Atom.of(0).withBond(Direction.EAST, (byte) 2);
+        Atom westBonded = Atom.of(0xFFFF).withBond(Direction.WEST, (byte) 2);
         SimulationPlan plan = new SimulationPlan(
                 List.of(mechanism(0, 1, Direction.NORTH, ".fd")),
                 List.of(InputSpec.of(new AtomPlacement(new GridPoint(0, 0), eastBonded),
@@ -222,9 +222,9 @@ class OrthogonalSimulatorLifecycleTest {
         assertEquals(Direction.EAST, simulator.mechanism(0).direction());
         Atom rotatedSalt = simulator.atomAt(new GridPoint(1, 1));
         Atom rotatedWater = simulator.atomAt(new GridPoint(1, 2));
-        assertEquals((byte) 1, rotatedSalt.type());
+        assertEquals(0, rotatedSalt.type());
         assertEquals((byte) 2, rotatedSalt.bondType(Direction.SOUTH));
-        assertEquals((byte) 5, rotatedWater.type());
+        assertEquals(0xFFFF, rotatedWater.type());
         assertEquals((byte) 2, rotatedWater.bondType(Direction.NORTH));
         assertEquals(1, simulator.grabsAt(new GridPoint(1, 1)));
         assertEquals(1, simulator.grabsAt(new GridPoint(1, 2)));
@@ -393,10 +393,10 @@ class OrthogonalSimulatorLifecycleTest {
     }
 
     private static Atom sampleAtom() {
-        return Atom.of((byte) 1);
+        return Atom.of(0);
     }
 
     private static Atom otherAtom() {
-        return Atom.of((byte) 5);
+        return Atom.of(0x8000);
     }
 }

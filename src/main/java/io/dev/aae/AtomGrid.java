@@ -13,7 +13,7 @@ import java.util.Set;
  *
  * <p>“无限网格 + 稀疏存储”语义，但直接用 {@link LinkedHashMap}，把布局优化留给实测。</p>
  *
- * <p>网格不保存空原子：类型字节 {@code 0} 的原子不允许存入，格点不存在即代表没有原子。</p>
+ * <p>格点不存在即代表没有原子；类型 {@code 0} 与其他有效类型一样可以存入。</p>
  */
 public final class AtomGrid {
 
@@ -23,10 +23,6 @@ public final class AtomGrid {
     public void put(GridPoint position, Atom atom) {
         Objects.requireNonNull(position, "position");
         Objects.requireNonNull(atom, "atom");
-        if (atom.type() == 0) {
-            throw new IllegalArgumentException(
-                    "grid stores only real atoms; use remove() to clear " + position);
-        }
         atoms.put(position, atom);
     }
 

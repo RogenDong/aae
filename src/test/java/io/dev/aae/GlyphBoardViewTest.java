@@ -87,11 +87,18 @@ class GlyphBoardViewTest {
         bind(List.of(ORIGIN));
         assertEquals(TryResult.SKIPPED, view.setType(0, (byte) 2));
         assertEquals(TryResult.SKIPPED, view.remove(0));
-        assertEquals(TryResult.APPLIED, view.spawn(0, Atom.of((byte) 1)));
+        assertEquals(TryResult.APPLIED, view.spawn(0, Atom.of(0)));
+        assertTrue(view.isOccupied(0));
+        assertEquals(0, view.atomAt(0).orElseThrow().type());
         long id = view.entityAt(0);
         grabs.put(id, 1);
         assertEquals(TryResult.SKIPPED, view.remove(0));
-        assertEquals(TryResult.APPLIED, view.setType(0, (byte) 2));
+        assertEquals(TryResult.APPLIED, view.setType(0, 0xFFFF));
+        assertEquals(0xFFFF, view.atomAt(0).orElseThrow().type());
+        for (int type : new int[]{-1, 0x10000}) {
+            assertThrows(IllegalArgumentException.class, () -> view.setType(0, type));
+            assertEquals(0xFFFF, view.atomAt(0).orElseThrow().type());
+        }
         assertEquals(id, view.entityAt(0));
         assertEquals(1, view.grabCountAt(0));
         grabs.put(id, 0);
@@ -101,7 +108,8 @@ class GlyphBoardViewTest {
         for (byte code : new byte[]{1, Atom.TEMPORARY_BOND}) {
             grid.put(ORIGIN, grid.get(ORIGIN).withBond(Direction.NORTH, code));
             assertEquals(TryResult.SKIPPED, view.remove(0));
-            view.setType(0, (byte) 3);
+            view.setType(0, 0);
+            assertEquals(0, grid.get(ORIGIN).type());
             assertEquals(code, grid.get(ORIGIN).bondType(Direction.NORTH));
             assertEquals(id, view.entityAt(0));
         }
@@ -115,7 +123,7 @@ class GlyphBoardViewTest {
         assertFalse(positions.containsKey(id));
         assertFalse(grabs.containsKey(id));
         assertEquals((byte) 0, grid.get(outside).bondType(Direction.SOUTH));
-        assertEquals(TryResult.APPLIED, view.spawn(0, Atom.of((byte) 5)));
+        assertEquals(TryResult.APPLIED, view.spawn(0, Atom.of(0)));
         assertNotEquals(id, view.entityAt(0));
     }
 

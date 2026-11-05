@@ -40,14 +40,6 @@ class AtomGridTest {
     }
 
     @Test
-    void rejectsAtomsWithoutAType() {
-        AtomGrid grid = new AtomGrid();
-        assertThrows(IllegalArgumentException.class,
-                () -> grid.put(ORIGIN, Atom.of((byte) 0)));
-        assertTrue(grid.isEmpty());
-    }
-
-    @Test
     void positionsKeepInsertionOrder() {
         AtomGrid grid = new AtomGrid();
         GridPoint second = new GridPoint(0, 0);

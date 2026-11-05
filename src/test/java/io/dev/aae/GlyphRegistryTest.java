@@ -334,9 +334,21 @@ class GlyphRegistryTest {
 
     @Test
     void inputSlotDeclarationsAreValidated() {
-        assertThrows(
-                IllegalArgumentException.class,
-                () -> GlyphDefinition.InputSlot.of(0, (byte) 0));
+        for (int type : new int[]{0, 0xFF, 0x0101, 0x8000, 0xFFFF}) {
+            assertEquals(type, GlyphDefinition.InputSlot.of(0, type).atomType());
+            assertEquals(type, new GlyphDefinition.InputSlot(0, type).atomType());
+            assertEquals(type, GlyphDefinition.InputSlot.bonded(0, type, Direction.EAST, (byte) 3).atomType());
+        }
+        for (int type : new int[]{-1, -2, 0x10000, Integer.MIN_VALUE, Integer.MAX_VALUE}) {
+            assertThrows(IllegalArgumentException.class, () -> GlyphDefinition.InputSlot.of(0, type));
+            assertThrows(IllegalArgumentException.class,
+                    () -> GlyphDefinition.InputSlot.bonded(0, type, Direction.EAST, (byte) 3));
+            if (type != -1) {
+                assertThrows(IllegalArgumentException.class, () -> new GlyphDefinition.InputSlot(0, type));
+                assertThrows(IllegalArgumentException.class,
+                        () -> new GlyphDefinition.InputSlot(0, type, (byte) 0, null, null));
+            }
+        }
         assertThrows(
                 IllegalArgumentException.class,
                 () -> GlyphDefinition.InputSlot.bonded(
@@ -397,28 +409,45 @@ class GlyphRegistryTest {
 
     @Test
     void inputSlotMatchingChecksTypeAndBond() {
-        GlyphDefinition.InputSlot typed = GlyphDefinition.InputSlot.of(0, (byte) 7);
+        GlyphDefinition.InputSlot typed = GlyphDefinition.InputSlot.of(0, 0x0101);
         assertFalse(typed.matches(null));
-        assertFalse(typed.matches(Atom.of((byte) 6)));
-        assertTrue(typed.matches(Atom.of((byte) 7)));
+        assertFalse(typed.matches(Atom.of(0x0201)));
+        assertTrue(typed.matches(Atom.of(0x0101)));
+        GlyphDefinition.InputSlot zero = GlyphDefinition.InputSlot.of(0, 0);
+        assertTrue(zero.matches(Atom.of(0)));
+        assertFalse(zero.matches(Atom.of(0x0100)));
+        assertFalse(zero.matches(null));
 
         GlyphDefinition.InputSlot bonded = GlyphDefinition.InputSlot.bonded(
-                0, (byte) 7, Direction.EAST, (byte) 3);
-        assertFalse(bonded.matches(Atom.of((byte) 7)));
-        assertTrue(bonded.matches(Atom.of((byte) 7).withBond(Direction.EAST, (byte) 3)));
-        assertFalse(bonded.matches(Atom.of((byte) 7).withBond(Direction.EAST, (byte) 4)));
+                0, 0, Direction.EAST, (byte) 3);
+        assertFalse(bonded.matches(Atom.of(0)));
+        assertTrue(bonded.matches(Atom.of(0).withBond(Direction.EAST, (byte) 3)));
+        assertFalse(bonded.matches(Atom.of(0).withBond(Direction.EAST, (byte) 4)));
+        assertFalse(bonded.matches(Atom.of(0x0100).withBond(Direction.EAST, (byte) 3)));
 
         GlyphDefinition.InputSlot any = GlyphDefinition.InputSlot.occupied(0);
-        assertTrue(any.matches(Atom.of((byte) 3)));
-        assertTrue(any.matches(Atom.of((byte) 3).withBond(Direction.SOUTH, (byte) 9)));
+        assertEquals(-1, any.atomType());
+        assertFalse(any.matches(null));
+        for (int type : new int[]{0, 3, 0x0101, 0x8000, 0xFFFF}) {
+            assertTrue(any.matches(Atom.of(type)));
+            assertTrue(any.matches(Atom.of(type).withBond(Direction.SOUTH, (byte) 9)));
+        }
+        GlyphDefinition.InputSlot constrained = new GlyphDefinition.InputSlot(
+                0, -1, (byte) 3, Direction.EAST, atom -> atom.type() >= 0x8000);
+        assertFalse(constrained.matches(null));
+        assertFalse(constrained.matches(Atom.of(0).withBond(Direction.EAST, (byte) 3)));
+        assertFalse(constrained.matches(Atom.of(0xFFFF)));
+        assertTrue(constrained.matches(Atom.of(0xFFFF).withBond(Direction.EAST, (byte) 3)));
     }
 
     // ---------- 编码规则 ----------
 
     @Test
-    void codeValidationRejectsZeroOneAndDuplicates() {
-        assertThrows(IllegalArgumentException.class, () -> Atom.requireAtomCode((byte) 0));
-        Atom.requireAtomCode((byte) 1);
+    void codeValidationSeparatesAtomRangeFromCallerAndBondReservations() {
+        Atom.requireAtomCode(0);
+        Atom.requireAtomCode(0xFFFF);
+        assertThrows(IllegalArgumentException.class, () -> Atom.requireAtomCode(-1));
+        assertThrows(IllegalArgumentException.class, () -> Atom.requireAtomCode(0x10000));
         assertThrows(IllegalArgumentException.class, () -> Atom.requireBondCode((byte) 0));
         assertThrows(IllegalArgumentException.class, () -> Atom.requireBondCode(Atom.TEMPORARY_BOND));
         Atom.requireBondCode((byte) 2);

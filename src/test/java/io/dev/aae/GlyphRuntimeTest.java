@@ -148,7 +148,7 @@ class GlyphRuntimeTest {
         GridPoint target = new GridPoint(11, 8);
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.single(type, context -> {
             if (context.phase().isFirstHalf()) {
-                context.board().queueSpawn(0, Atom.of((byte) 9));
+                context.board().queueSpawn(0, Atom.of(0));
             }
         }))) {
             GlyphRuntimeFixture fixture = new GlyphRuntimeFixture(
@@ -163,13 +163,24 @@ class GlyphRuntimeTest {
             assertTrue(fixture.runtime.reservedCells().isEmpty());
             assertEquals(0, fixture.pendingGlyphSpawnCount());
             assertEquals(sampleAtom(), fixture.atomAt(target));
+            // 同一目标格改为空闲初态：第一半周期预留类型 0，第二半周期落盘且仍视为占用。
+            GlyphRuntimeFixture empty = new GlyphRuntimeFixture(
+                    List.of(), List.of(new GlyphSpec(type, target)));
+            empty.runtime.beginCycle(0);
+            empty.half(GlyphPhase.FIRST_HALF);
+            assertNull(empty.atomAt(target));
+            assertEquals(1, empty.pendingGlyphSpawnCount());
+            empty.half(GlyphPhase.SECOND_HALF);
+            assertEquals(Atom.of(0), empty.atomAt(target));
+            assertEquals(1, empty.boardSize());
+            assertEquals(0, empty.pendingGlyphSpawnCount());
         }
     }
 
     @Test
     void spawnOnAnOccupiedCellIsDeferredInsteadOfOverwriting() {
-        Atom occupant = Atom.of((byte) 7);
-        Atom product = Atom.of((byte) 9);
+        Atom occupant = Atom.of(0);
+        Atom product = Atom.of(0xFFFF);
         List<TryResult> results = new ArrayList<>();
         String spawnerType = uniqueTypeId("deferred-spawn");
         GlyphRegistry.global().register(GlyphDefinition.single(spawnerType, context -> {
@@ -350,6 +361,8 @@ class GlyphRuntimeTest {
     @Test
     void glyphBusinessExceptionRollsBackTheWholeCycleAndIsRethrown() {
         IllegalStateException failure = new IllegalStateException("boom");
+        Atom carried = Atom.of(0x8000).withBond(Direction.NORTH, (byte) 0x80);
+        Atom queued = Atom.of(0).withBond(Direction.WEST, (byte) 0xFE);
         String glyphType = uniqueTypeId("throwing");
         List<Integer> order = new ArrayList<>();
         OrthogonalSimulator[] observed = new OrthogonalSimulator[1];
@@ -363,13 +376,14 @@ class GlyphRuntimeTest {
                     assertEquals(new GridPoint(5 + index * 5, 5), context.spec().position());
                     if (index == 0 && context.cycle() == 1) {
                         if (context.phase().isFirstHalf()) {
-                            assertEquals(TryResult.APPLIED, context.board().spawn(0, otherAtom()));
-                            assertEquals(TryResult.APPLIED, context.board().queueSpawn(1, sampleAtom()));
+                            assertEquals(TryResult.APPLIED, context.board().spawn(0, Atom.of(0xFFFF)));
+                            assertEquals(TryResult.APPLIED, context.board().queueSpawn(1, queued));
                         } else {
                             // 抛异常前确认机构已运动，第一半周期状态与延迟产物也已经提交。
                             assertEquals(3, state);
                             assertEquals(new GridPoint(0, 1), observed[0].mechanism(0).position());
-                            assertEquals(sampleAtom(), observed[0].atomAt(new GridPoint(6, 5)));
+                            assertEquals(queued, observed[0].atomAt(new GridPoint(6, 5)));
+                            assertEquals(carried, observed[0].atomAt(new GridPoint(0, 0)));
                             throw failure;
                         }
                     }
@@ -380,7 +394,7 @@ class GlyphRuntimeTest {
                     List.of(new MechanismSpec(new GridPoint(-1, 1), Direction.NORTH,
                             InstructionTape.once("fg"))),
                     List.of(track(-1, 1, 0, 1)),
-                    List.of(InputSpec.single(new GridPoint(-1, 0), sampleAtom())),
+                    List.of(InputSpec.single(new GridPoint(-1, 0), carried)),
                     List.of(),
                     glyphs(new GlyphSpec(glyphType, new GridPoint(5, 5)),
                             new GlyphSpec(glyphType, new GridPoint(10, 5))));
@@ -401,7 +415,7 @@ class GlyphRuntimeTest {
             assertEquals(1, simulator.cycle());
             assertEquals(1, simulator.warnings().size());
             // 周期开始时的状态被完整还原。
-            assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(-1, 0)));
+            assertEquals(carried, simulator.atomAt(new GridPoint(-1, 0)));
             assertEquals(entity, simulator.entityAt(new GridPoint(-1, 0)));
             assertEquals(List.of(entity), simulator.heldEntities(0));
             assertEquals(1, simulator.grabsAt(new GridPoint(-1, 0)));

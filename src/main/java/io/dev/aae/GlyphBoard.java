@@ -73,13 +73,13 @@ public interface GlyphBoard extends GlyphReader {
      *
      * <p>保留 {@code entityId}、全部键位和抓取状态。</p>
      *
-     * @param type 新的原子类型字节，不能是 {@code 0}
+     * @param type 新的原子类型，范围 {@code 0..0xFFFF}，包含 {@code 0}
      * @return {@link TryResult#APPLIED} 表示已替换；目标格点没有原子时返回
      *         {@link TryResult#SKIPPED}
-     * @throws IllegalArgumentException 类型字节是 {@code 0}
+     * @throws IllegalArgumentException 类型超出 {@code 0..0xFFFF}
      * @throws GlyphExecutionException  视图已失效
      */
-    TryResult setType(int placeholder, byte type) throws GlyphExecutionException;
+    TryResult setType(int placeholder, int type) throws GlyphExecutionException;
 
     /**
      * 生成一个新原子。
@@ -91,7 +91,7 @@ public interface GlyphBoard extends GlyphReader {
      *
      * @return {@link TryResult#APPLIED} 表示已落盘；目标格点被占用时返回
      *         {@link TryResult#SKIPPED}，产物进入延迟队列
-     * @throws IllegalArgumentException 原子类型字节是 {@code 0}
+     * @param atom 要生成的原子，类型 {@code 0} 也是有效类型
      * @throws GlyphExecutionException  视图已失效
      */
     TryResult spawn(int placeholder, Atom atom) throws GlyphExecutionException;
@@ -107,7 +107,7 @@ public interface GlyphBoard extends GlyphReader {
      * 跳过整份模板。</p>
      *
      * @return 登记成功返回 {@link TryResult#APPLIED}
-     * @throws IllegalArgumentException 原子类型字节是 {@code 0}
+     * @param atom 要生成的原子，类型 {@code 0} 也是有效类型
      * @throws GlyphExecutionException  视图已失效
      */
     TryResult queueSpawn(int placeholder, Atom atom) throws GlyphExecutionException;

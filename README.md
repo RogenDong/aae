@@ -2,7 +2,7 @@
 
 这是一个参考 `omsim` 与 `omclone` 分层思路实现的 Java 仿真器基线。它使用无限方格、东南西北四种机构朝向、正交/对角轨道和按周期读取的指令带；运行期检查周期结束后的分子重叠、分子/机构基座重叠与机构基座之间的重叠，不执行变换过程中的实时碰撞采样。
 
-当前版本聚焦最小但可执行的核心：多个机构可沿显式轨道移动、绕基座或抓握点旋转、伸缩、等待；轨道由有序格点定义，分别只允许正交单位步或对角单位步；原子网格按字节保存原子类型与四方向键类型（编码由调用方定义）并提供分子连通分量搜索；输入在每个周期末尾生产模板分子，输出消费类型、键与形状完全一致的未抓取分子并驱动完成条件；指令带支持抓取与释放，同一实体收到不兼容意图时模拟器停机并警告。它不是对《Opus Magnum》全部符文、导管和碰撞协议的移植；这些游戏专用能力被留在扩展边界之外。
+当前版本聚焦最小但可执行的核心：多个机构可沿显式轨道移动、绕基座或抓握点旋转、伸缩、等待；轨道由有序格点定义，分别只允许正交单位步或对角单位步；原子网格以 `int` 保存原子类型、以 `byte` 保存四方向键类型（编码由调用方定义）并提供分子连通分量搜索；输入在每个周期末尾生产模板分子，输出消费类型、键与形状完全一致的未抓取分子并驱动完成条件；指令带支持抓取与释放，同一实体收到不兼容意图时模拟器停机并警告。
 
 ## 设计要点
 
@@ -18,7 +18,7 @@
 - 符文、输入、输出分别按 `SimulationPlan.glyphs()`、`inputs()`、`outputs()` 的声明顺序使用从 `0` 开始的下标，下标在运行、回滚和重置期间稳定且只适用于当前计划。符文 `typeId` 继续标识注册类型。
 - `glyphState(int glyphIndex)` 查询符文状态，回调通过 `GlyphContext.glyphIndex()` 获取自身下标；此下标与棋盘 API 的局部占位下标各自独立。`outputCount(int outputIndex)` 查询单个输出计数，`outputCounts()` 返回按输出声明顺序排列的 `long[]` 独立快照；下标查询越界抛出 `IndexOutOfBoundsException`。
 - `mechanism(index)` 和 `mechanisms()` 提供机构的只读状态值，包含基座位置、朝向、长度和抓取状态；`heldEntities(index)` 返回指定机构当前持有的实体。单机构查询下标越界时抛出 `IndexOutOfBoundsException`。
-- 原子类型与化学键类型都是 `byte` 且由调用方定义编码：项目只比较数值、不认识类型名称，内部只依赖两条约定——键字节 `0` 表示无键、`0xFF` 表示本周期临时键。`Atom` 由一个类型字节加四个方向的键字节组成，是不可变值对象。
+- 原子类型是有效范围为 `0..0xFFFF` 的 `int`，类型 `0` 也有效；化学键类型仍为 `byte`。编码由调用方定义，项目只比较数值、不认识类型名称；键字节 `0` 表示无键、`0xFF` 表示本周期临时键。`Atom` 是不可变 record，四方向键独立打包在 `bondCodes` 中。
 - `AtomGrid` 是 `GridPoint -> Atom` 的稀疏映射，成键时两端互惠写入；单侧键不构成连通。
 - `MoleculeBfs` 用显式队列做广度优先搜索，返回不可变的 `Molecule`；搜索过程不改动网格，也不使用递归。
 - `InputSpec` 与 `OutputSpec` 是绝对坐标下的不可变原子模板；棋盘实体使用正数 `long` 作为跨周期稳定标识，没有原子时 `entityAt` 返回 `0L`。
@@ -173,9 +173,11 @@ SimulationPlan plan = new SimulationPlan(
 
 ## 原子、化学键与分子
 
-原子类型与化学键类型都是普通 `byte`，编码由调用方自己定义：模拟器不认识原子名称或键类型
-名称，只按数值保存、比较和传播。`Atom.of(byte)`、`Atom.withBond(Direction, byte)`、
-`AtomGrid.bond(...)`、`Molecule.countOf(byte)` 都直接接收字节，也不校验取值范围。
+原子类型使用 `int`，有效范围为 `0..0xFFFF`，化学键类型使用 `byte`。编码由调用方自己定义：
+模拟器不认识原子名称或键类型名称，只按完整数值保存、比较和传播。`Atom.of(int)`、
+`Atom.withType(int)`、`Atom.requireAtomCode(int)` 和公开构造器统一校验原子类型范围，
+越界抛出 `IllegalArgumentException`。`Molecule.countOf(int)` 按完整类型计数；
+`Atom.withBond(Direction, byte)` 与 `AtomGrid.bond(...)` 继续接收键字节。
 
 实现内部只依赖两条数值约定：
 
@@ -185,8 +187,19 @@ SimulationPlan plan = new SimulationPlan(
 | 键字节 `0xFF` | 本周期刚建立、下一周期会被清除的临时键 |
 | 其余非零键字节 | 长期键，即 `Atom.isRealBond(byte)` 为真 |
 
-原子类型字节只有一处约定：`AtomGrid` 拒绝类型字节为 `0` 的原子，因为“格点不存在”
-已经代表没有原子。
+类型 `0` 是真实原子，允许写入 `AtomGrid`、由符文生成或通过 `setType` 替换得到。
+“格点不存在”代表没有原子；清空格点使用删除操作。负数不是有效原子类型。
+
+双参数创建统一使用公开 record 构造器，可以直接还原完整类型和打包键：
+
+```java
+Atom atom = Atom.of(0x8000).withBond(Direction.EAST, (byte) 2);
+Atom restored = new Atom(atom.type(), atom.bondCodes());
+// restored.equals(atom) == true
+```
+
+不提供双参数 `Atom.of` 或旧 `byte` 原子类型重载。示例中的 OM 固定编码和测试编码辅助类
+仍可使用自身的 `byte` 编码，传入原子接口时由 Java 自动扩宽；引擎不对负字节作无符号转换。
 
 类似 `omsim, omclone` 的位移量（`SALT` = 1 … `QUINTESSENCE` = 16）只是调用方可以选择的一种
 编码方案，本项目不会把它固化成常量、掩码或判据。
@@ -195,16 +208,16 @@ SimulationPlan plan = new SimulationPlan(
 AtomGrid grid = new AtomGrid();
 GridPoint left = new GridPoint(0, 0);
 GridPoint right = new GridPoint(1, 0);
-// 类型字节与键字节都是调用方自己的编码：这里用 1 与 5 表示两种原子、2 表示长期键。
-grid.put(left, Atom.of((byte) 1));
-grid.put(right, Atom.of((byte) 5));
+// 原子类型与键字节都是调用方自己的编码：这里用 0 与 0x0101 表示两种原子、2 表示长期键。
+grid.put(left, Atom.of(0));
+grid.put(right, Atom.of(0x0101));
 
 // 成键会在两端同时写入反方向的同一键字节。
 grid.bond(left, Direction.EAST, (byte) 2);
 
 Molecule molecule = MoleculeBfs.moleculeAt(grid, left);
 // molecule.size() == 2，原子按 BFS 发现顺序保存
-// molecule.countOf((byte) 1) == 1
+// molecule.countOf(0) == 1，molecule.countOf(0x0101) == 1
 
 List<Molecule> molecules = MoleculeBfs.molecules(grid);
 // 把网格上的全部原子划分成连通分量
@@ -245,8 +258,8 @@ SimulationPlan plan = new SimulationPlan(
         List.of(new TrackSpec(List.of(
                 new GridPoint(0, 1),
                 new GridPoint(-1, 1)))),
-        List.of(InputSpec.single(new GridPoint(0, 0), Atom.of((byte) 1))),
-        List.of(OutputSpec.single(new GridPoint(-1, 0), Atom.of((byte) 1))),
+        List.of(InputSpec.single(new GridPoint(0, 0), Atom.of(1))),
+        List.of(OutputSpec.single(new GridPoint(-1, 0), Atom.of(1))),
         1);
 
 OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
@@ -255,7 +268,7 @@ simulator.run(4);
 ```
 
 - 输入足迹（模板全部格点）空闲时，输入在每个周期末尾生产模板原子；任一格点被
-  占用则跳过该周期。模板原子的键直接写在 `Atom` 字节里，带键分子原样生产。
+  占用则跳过该周期。模板原子的四方向键写在 `Atom.bondCodes` 中，带键分子原样生产。
 - 输出从模板第一个原子位置出发做分子搜索，要求分子大小、每个原子的类型与长期
   键都和模板完全一致，且没有任何原子被机构持有；匹配的分子被移除，输出计数
   加一。全部输出达到 `targetOutputs` 时 `isComplete()` 为真。
@@ -295,6 +308,10 @@ git status --short
 `InputSlot.position()`、`OutputSlot.position()` 和所有 `GlyphReader` / `GlyphBoard` 方法
 都使用该索引；槽位必须属于定义的 placeholder，输入、输出各自不能重复，也不能共享索引。
 非法索引抛出 `IndexOutOfBoundsException`，消息包含索引、占位数量和符文类型。
+
+`InputSlot` 的原子类型参数为 `int`。`of(position, type)`、`bonded(...)` 精确匹配
+`0..0xFFFF` 的类型，包含 `0`；`occupied(position)` 使用 `-1` 通配，但仍要求格点上有原子。
+直接调用 `InputSlot` 构造器时也可用 `-1` 组合通配、键要求和自定义判据；其他越界类型被拒绝。
 
 每个半周期共用一个棋盘视图，每次执行符文前重新绑定当前实例，索引按该定义和实例朝向
 解析成世界格点。方向参数使用世界方向；方向键操作只允许连接当前 placeholder 内的邻居，

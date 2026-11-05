@@ -6,8 +6,9 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 符文系统的原子类型 / 化学键类型编码表。
  *
- * <p>模拟器本身不认识元素名或键名：{@link Atom}、{@link AtomGrid} 只保存和返回类型字节，
- * 不校验取值范围。需要“名字 → 字节”映射的符文实现把编码登记到这里，由本类保证三条编码
+ * <p>模拟器本身不认识元素名或键名：{@link Atom} 使用范围为 {@code 0..0xFFFF} 的
+ * {@code int} 原子类型，键类型仍为 {@code byte}。本类独立提供调用方的“名字 → 字节”
+ * 编码体系，原子类型字节自动扩宽后传入引擎，由本类保证以下编码
  * 规则：</p>
  *
  * <ol>
@@ -151,8 +152,13 @@ public final class BaseEncoding {
         Objects.requireNonNull(codes, "codes");
         Set<Byte> seen = new LinkedHashSet<>();
         for (byte code : codes) {
-            if (atom) Atom.requireAtomCode(code);
-            else Atom.requireBondCode(code);
+            if (atom) {
+                if (code == 0) {
+                    throw new IllegalArgumentException("type code must not be 0");
+                }
+            } else {
+                Atom.requireBondCode(code);
+            }
             if (!seen.add(code)) {
                 throw new IllegalArgumentException(
                         "atom types must be globally distinct, duplicated byte: " + (code & 0xFF));

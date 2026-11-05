@@ -3,35 +3,38 @@ package io.dev.aae;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
- * {@link Atom} 只处理数值：下面的类型字节和键字节都是任意的示例数值，
- * 模拟器语义只依赖两条约定——{@code 0} 是无键，{@code 1} 是临时键。
+ * {@link Atom} 只处理数值：原子类型为 16 位有效范围的 {@code int}，键类型仍为字节，
+ * 模拟器语义只依赖两条键约定——{@code 0} 是无键，{@code 0xFF} 是临时键。
  */
 class AtomTest {
 
     @Test
     void newAtomHasNoBonds() {
-        Atom atom = Atom.of((byte) 1);
+        for (int type : new int[]{0, 1, 0xFF, 0x0101, 0x8000, 0xFFFF}) {
+            Atom atom = Atom.of(type);
 
-        assertEquals((byte) 1, atom.type());
-        assertEquals(0, atom.bondCodes());
-        assertEquals(0, atom.bondCount());
-        assertEquals(List.of(), atom.bondedDirections());
-        for (Direction direction : Direction.values()) {
-            assertEquals((byte) 0, atom.bondType(direction));
-            assertFalse(atom.hasBond(direction));
-            assertFalse(atom.hasRealBond(direction));
+            assertEquals(type, atom.type());
+            assertEquals(0, atom.bondCodes());
+            assertEquals(0, atom.bondCount());
+            assertEquals(List.of(), atom.bondedDirections());
+            for (Direction direction : Direction.values()) {
+                assertEquals((byte) 0, atom.bondType(direction));
+                assertFalse(atom.hasBond(direction));
+                assertFalse(atom.hasRealBond(direction));
+            }
         }
     }
 
     @Test
     void eachDirectionKeepsItsOwnBondByte() {
-        Atom atom = Atom.of((byte) 10)
+        Atom atom = Atom.of(0xFFFF)
                 .withBond(Direction.NORTH, (byte) 2)
                 .withBond(Direction.EAST, (byte) 3)
                 .withBond(Direction.SOUTH, (byte) 4)
@@ -42,6 +45,7 @@ class AtomTest {
         assertEquals((byte) 4, atom.bondType(Direction.SOUTH));
         assertEquals((byte) 5, atom.bondType(Direction.WEST));
         assertEquals(4, atom.bondCount());
+        assertEquals(0xFFFF, atom.type());
         assertEquals(
                 List.of(Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST),
                 atom.bondedDirections());
@@ -83,7 +87,7 @@ class AtomTest {
 
     @Test
     void withoutBondAndWithoutBondsClearExactlyWhatTheySay() {
-        Atom atom = Atom.of((byte) 7)
+        Atom atom = Atom.of(0x8000)
                 .withBond(Direction.NORTH, (byte) 2)
                 .withBond(Direction.EAST, (byte) 2);
 
@@ -93,18 +97,28 @@ class AtomTest {
 
         assertEquals(0, atom.withoutBonds().bondCodes());
         assertEquals(0, cleared.withoutBonds().bondCount());
+        assertEquals(0x8000, cleared.type());
+        assertEquals(0x8000, atom.withoutBonds().type());
+        Atom temporary = atom.withBond(Direction.WEST, Atom.TEMPORARY_BOND);
+        assertEquals(atom, temporary.withoutTemporaryBonds());
+        assertEquals(0x8000, new Atom(0x8000, -1).withoutTemporaryBonds().type());
+        assertEquals(0, new Atom(0x8000, -1).withoutTemporaryBonds().bondCodes());
     }
 
     @Test
     void withTypeKeepsTheBondBytes() {
-        // 只清掉原子类型位
-        Atom atom = Atom.of((byte) 1).withBond(Direction.EAST, (byte) 2);
+        Atom atom = Atom.of(0x0101).withBond(Direction.EAST, (byte) 2);
 
-        Atom transformed = atom.withType((byte) 16);
+        for (int type : new int[]{0, 0xFF, 0x8000, 0xFFFF}) {
+            Atom transformed = atom.withType(type);
 
-        assertEquals((byte) 16, transformed.type());
-        assertEquals(atom.bondCodes(), transformed.bondCodes());
-        assertEquals((byte) 2, transformed.bondType(Direction.EAST));
+            assertEquals(type, transformed.type());
+            assertEquals(atom.bondCodes(), transformed.bondCodes());
+            assertEquals((byte) 2, transformed.bondType(Direction.EAST));
+        }
+        for (int type : new int[]{-1, -3, 0x10000, Integer.MIN_VALUE, Integer.MAX_VALUE}) {
+            assertThrows(IllegalArgumentException.class, () -> atom.withType(type));
+        }
     }
 
     @Test
@@ -125,7 +139,7 @@ class AtomTest {
 
     @Test
     void rotatingByAFullTurnOrNegativeTurnsIsWellDefined() {
-        Atom atom = Atom.of((byte) 11)
+        Atom atom = Atom.of(0xFFFF)
                 .withBond(Direction.NORTH, (byte) 2)
                 .withBond(Direction.SOUTH, (byte) 1);
 
@@ -135,42 +149,51 @@ class AtomTest {
         assertEquals(atom.rotateBonds(1), atom.rotateBonds(-3));
         assertEquals(atom.rotateBonds(3), atom.rotateBonds(-1));
         // 旋转不改变原子类型，也不丢失临时键。
-        assertEquals((byte) 11, atom.rotateBonds(1).type());
+        assertEquals(0xFFFF, atom.rotateBonds(1).type());
         assertTrue(atom.rotateBonds(1).hasBond(Direction.WEST));
     }
 
     @Test
-    void packedCodesRoundTripAndAnyByteIsAccepted() {
-        Atom atom = Atom.of((byte) 12)
+    void packedCodesRoundTripAndAtomTypeIsValidated() {
+        Atom atom = Atom.of(0x8000)
                 .withBond(Direction.NORTH, (byte) 5)
                 .withBond(Direction.SOUTH, (byte) 1);
 
-        assertEquals(atom, Atom.of((byte) 12, atom.bondCodes()));
+        assertEquals(atom, new Atom(atom.type(), atom.bondCodes()));
 
-        // 项目不校验取值范围：调用方给出的字节原样保存与返回。
+        // 原子类型校验范围；键字节仍原样保存与返回。
         int unusual = 0x7F << (Direction.EAST.ordinal() * Byte.SIZE);
-        Atom raw = Atom.of((byte) -3, unusual);
-        assertEquals((byte) -3, raw.type());
+        Atom raw = new Atom(0xFFFF, unusual);
+        assertEquals(0xFFFF, raw.type());
         assertEquals((byte) 0x7F, raw.bondType(Direction.EAST));
         assertTrue(raw.hasBond(Direction.EAST));
         assertTrue(raw.hasRealBond(Direction.EAST));
+        for (int type : new int[]{0, 0xFF, 0x0101, 0x8000, 0xFFFF}) {
+            Atom.requireAtomCode(type);
+            assertEquals(type, new Atom(type, unusual).type());
+        }
+        for (int type : new int[]{-1, -3, 0x10000, Integer.MIN_VALUE, Integer.MAX_VALUE}) {
+            assertThrows(IllegalArgumentException.class, () -> new Atom(type, unusual));
+            assertThrows(IllegalArgumentException.class, () -> Atom.of(type));
+            assertThrows(IllegalArgumentException.class, () -> Atom.requireAtomCode(type));
+        }
     }
 
     @Test
     void equalityIsByTypeAndBondBytes() {
-        Atom atom = Atom.of((byte) 14).withBond(Direction.NORTH, (byte) 2);
+        Atom atom = Atom.of(0x0101).withBond(Direction.NORTH, (byte) 2);
 
-        assertEquals(atom, Atom.of((byte) 14).withBond(Direction.NORTH, (byte) 2));
+        assertEquals(atom, new Atom(0x0101, atom.bondCodes()));
         assertEquals(atom.hashCode(),
-                Atom.of((byte) 14).withBond(Direction.NORTH, (byte) 2).hashCode());
-        assertNotEquals(atom, atom.withType((byte) 13));
+                new Atom(0x0101, atom.bondCodes()).hashCode());
+        assertNotEquals(atom, atom.withType(0x0201));
         assertNotEquals(atom, atom.withBond(Direction.EAST, (byte) 2));
     }
 
     @Test
     void toStringUsesRawNumbers() {
-        Atom atom = Atom.of((byte) 1).withBond(Direction.WEST, (byte) 2);
+        Atom atom = Atom.of(0xFFFF).withBond(Direction.WEST, (byte) 2);
 
-        assertEquals("type=1 WEST=2", atom.toString());
+        assertEquals("type=65535 N=0 E=0 S=0 W=2", atom.toString());
     }
 }

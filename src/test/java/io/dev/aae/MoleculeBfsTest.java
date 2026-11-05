@@ -298,7 +298,7 @@ class MoleculeBfsTest {
         for (int index = 0; index < 3; index++) {
             GridPoint position = new GridPoint(index, -5);
             cells.add(position);
-            grid.put(position, Atom.of(index == 1 ? (byte) 10 : (byte) 1));
+            grid.put(position, Atom.of(index == 1 ? 0 : 0x0101));
         }
         grid.bond(cells.get(0), Direction.EAST, (byte) 2);
         grid.bond(cells.get(1), Direction.EAST, (byte) 2);
@@ -306,22 +306,24 @@ class MoleculeBfsTest {
         Molecule molecule = MoleculeBfs.moleculeAt(grid, cells.get(0));
 
         assertEquals(3, molecule.size());
-        assertEquals(2, molecule.countOf((byte) 1));
-        assertEquals(1, molecule.countOf((byte) 10));
-        assertEquals(0, molecule.countOf((byte) 7));
+        assertEquals(2, molecule.countOf(0x0101));
+        assertEquals(1, molecule.countOf(0));
+        assertEquals(0, molecule.countOf(0x0201));
         assertEquals(new GridBounds(0, -5, 2, -5), molecule.bounds().orElseThrow());
         assertEquals(Set.copyOf(cells), molecule.positions());
     }
 
     @Test
     void placementTranslateKeepsTheAtomAndMovesThePosition() {
-        Atom atom = Atom.of((byte) 4).withBond(Direction.NORTH, (byte) 2);
+        Atom atom = Atom.of(0xFFFF).withBond(Direction.NORTH, (byte) 2);
         AtomPlacement placement = new AtomPlacement(new GridPoint(2, 2), atom);
 
         AtomPlacement moved = placement.translate(Direction.NORTH);
 
         assertEquals(new GridPoint(2, 1), moved.position());
         assertEquals(atom, moved.atom());
+        assertEquals(0xFFFF, placement.type());
+        assertEquals(0xFFFF, moved.type());
         assertEquals(new GridPoint(2, 2), placement.position());
     }
 }

@@ -63,8 +63,8 @@ public final class Molecule {
         return byPosition.get(Objects.requireNonNull(position, "position"));
     }
 
-    /** 统计类型字节等于 {@code type} 的原子数量；类型编码由调用方定义。 */
-    public int countOf(byte type) {
+    /** 统计完整类型编码等于 {@code type} 的原子数量；类型编码由调用方定义。 */
+    public int countOf(int type) {
         int count = 0;
         for (AtomPlacement placement : atoms) {
             if (placement.type() == type) {

@@ -10,8 +10,8 @@ public record AtomPlacement(GridPoint position, Atom atom) {
         Objects.requireNonNull(atom, "atom");
     }
 
-    /** 原子类型字节，原样返回 {@link Atom#type()} 的数值。 */
-    public byte type() {
+    /** 原子类型编码，原样返回 {@link Atom#type()} 的完整数值。 */
+    public int type() {
         return atom.type();
     }
 

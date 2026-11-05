@@ -11,7 +11,7 @@ public record FloatAtom(
         double x,
         double y,
         double rotationAngle, // 弧度制，原子自转角
-        byte atomType,
+        int atomType,
         byte[] bondCodes,     // 四个正交方向 (NORTH, EAST, SOUTH, WEST) 的键编码
         float alpha           // 透明度 [0.0, 1.0]，用于渲染常规实体(1.0)或模板半透明分子(<1.0)
 ) {

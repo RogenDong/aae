@@ -105,9 +105,9 @@ public final class OrthogonalRenderer {
     }
 
     /**
-     * 根据原子类型字节映射其色彩（彩色朴素圆形）。
+     * 根据完整的原子类型编码映射其色彩（彩色朴素圆形）。
      */
-    public static Color getAtomColor(byte atomType) {
+    public static Color getAtomColor(int atomType) {
         return switch (atomType) {
             case 1 -> new Color(192, 172, 144); // salt
             case 2 -> Color.WHITE;   // air
@@ -118,7 +118,7 @@ public final class OrthogonalRenderer {
             case 7 -> Color.PINK;    // 粉红
             default -> {
                 // 动态哈希调色
-                int hash = (atomType & 0xFF) * 31;
+                int hash = atomType * 31;
                 yield new Color((hash * 67) % 200 + 40, (hash * 131) % 200 + 40, (hash * 199) % 200 + 40);
             }
         };
