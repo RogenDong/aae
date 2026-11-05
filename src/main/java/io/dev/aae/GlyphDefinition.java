@@ -5,6 +5,7 @@ import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -187,23 +188,24 @@ public record GlyphDefinition<S>(
     }
 
     /**
-     * 一个输入格点的期望值：placeholder 索引 + 原子类型 + 可选的键类型或自定义判据。
+     * 一个输入格点的期望值：该格点必须有原子，并满足可选的类型、键及自定义约束。
      *
      * @param position    placeholder 的 0-based 索引
-     * @param atomType    期望的原子类型，范围 {@code 0..0xFFFF}
+     * @param requiredAtomType 可选的精确原子类型，范围 {@code 0..0xFFFF}；为空表示不限制类型，不能为 {@code null}
      * @param bondType    期望在该方向存在的键类型字节；{@code 0} 表示不作要求
      * @param direction   检查键位时使用的世界方向；{@code bondType == 0} 时忽略
      * @param expectation 额外的原子级判据；{@code null} 表示不作要求
      */
     public record InputSlot(
             int position,
-            int atomType,
+            OptionalInt requiredAtomType,
             byte bondType,
             Direction direction,
             Predicate<Atom> expectation) {
 
         public InputSlot {
-            Atom.requireAtomCode(atomType);
+            Objects.requireNonNull(requiredAtomType, "requiredAtomType");
+            requiredAtomType.ifPresent(Atom::requireAtomCode);
             if (bondType != 0) {
                 Atom.requireBondCode(bondType);
                 Objects.requireNonNull(direction, "direction");
@@ -224,26 +226,27 @@ public record GlyphDefinition<S>(
             this(position, atomType, bondType, direction, null);
         }
 
+        /** 精确匹配原子类型，并附带可选的键要求和自定义判据。 */
+        public InputSlot(
+                int position, int atomType, byte bondType, Direction direction,
+                Predicate<Atom> expectation) {
+            this(position, OptionalInt.of(atomType), bondType, direction, expectation);
+        }
+
         /** 精确匹配原子类型 {@code 0..0xFFFF} */
         public static InputSlot of(int position, int atomType) {
-            Atom.requireAtomCode(atomType);
             return new InputSlot(position, atomType, (byte) 0, Direction.NORTH);
         }
 
         /** 精确匹配原子类型 {@code 0..0xFFFF}，并要求该世界方向上存在指定键。 */
         public static InputSlot bonded(
                 int position, int atomType, Direction direction, byte bondType) {
-            Atom.requireAtomCode(atomType);
             return new InputSlot(position, atomType, bondType, direction);
         }
 
-        /**
-         * 只要求“该格点有原子”，使用 {@code -1} 通配，不限定原子类型。
-         *
-         * <p>它们在行为里按 {@code [1, 0xFF)} 的数值约定判断键，不依赖任何元素名字。</p>
-         */
+        /** 只要求该格点有原子，不附加类型、键或自定义约束。 */
         public static InputSlot occupied(int position) {
-            return new InputSlot(position, -1, (byte) 0, Direction.NORTH, null);
+            return new InputSlot(position, OptionalInt.empty(), (byte) 0, Direction.NORTH, null);
         }
 
         /** 该格点上的原子是否符合本声明的期望。 */
@@ -251,7 +254,7 @@ public record GlyphDefinition<S>(
             if (atom == null) {
                 return false;
             }
-            if (atomType != -1 && atom.type() != atomType) {
+            if (requiredAtomType.isPresent() && atom.type() != requiredAtomType.getAsInt()) {
                 return false;
             }
             if (expectation != null && !expectation.test(atom)) {

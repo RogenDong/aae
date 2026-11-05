@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CyclicBarrier;
@@ -335,20 +336,30 @@ class GlyphRegistryTest {
     @Test
     void inputSlotDeclarationsAreValidated() {
         for (int type : new int[]{0, 0xFF, 0x0101, 0x8000, 0xFFFF}) {
-            assertEquals(type, GlyphDefinition.InputSlot.of(0, type).atomType());
-            assertEquals(type, new GlyphDefinition.InputSlot(0, type).atomType());
-            assertEquals(type, GlyphDefinition.InputSlot.bonded(0, type, Direction.EAST, (byte) 3).atomType());
+            for (GlyphDefinition.InputSlot slot : List.of(
+                    GlyphDefinition.InputSlot.of(0, type),
+                    GlyphDefinition.InputSlot.bonded(0, type, Direction.EAST, (byte) 3),
+                    new GlyphDefinition.InputSlot(0, type),
+                    new GlyphDefinition.InputSlot(0, type, (byte) 3, Direction.EAST),
+                    new GlyphDefinition.InputSlot(0, type, (byte) 0, null, null),
+                    new GlyphDefinition.InputSlot(0, OptionalInt.of(type), (byte) 0, null, null))) {
+                assertEquals(OptionalInt.of(type), slot.requiredAtomType());
+            }
         }
         for (int type : new int[]{-1, -2, 0x10000, Integer.MIN_VALUE, Integer.MAX_VALUE}) {
             assertThrows(IllegalArgumentException.class, () -> GlyphDefinition.InputSlot.of(0, type));
             assertThrows(IllegalArgumentException.class,
                     () -> GlyphDefinition.InputSlot.bonded(0, type, Direction.EAST, (byte) 3));
-            if (type != -1) {
-                assertThrows(IllegalArgumentException.class, () -> new GlyphDefinition.InputSlot(0, type));
-                assertThrows(IllegalArgumentException.class,
-                        () -> new GlyphDefinition.InputSlot(0, type, (byte) 0, null, null));
-            }
+            assertThrows(IllegalArgumentException.class, () -> new GlyphDefinition.InputSlot(0, type));
+            assertThrows(IllegalArgumentException.class,
+                    () -> new GlyphDefinition.InputSlot(0, type, (byte) 3, Direction.EAST));
+            assertThrows(IllegalArgumentException.class,
+                    () -> new GlyphDefinition.InputSlot(0, type, (byte) 0, null, null));
+            assertThrows(IllegalArgumentException.class,
+                    () -> new GlyphDefinition.InputSlot(0, OptionalInt.of(type), (byte) 0, null, null));
         }
+        assertThrows(NullPointerException.class,
+                () -> new GlyphDefinition.InputSlot(0, null, (byte) 0, null, null));
         assertThrows(
                 IllegalArgumentException.class,
                 () -> GlyphDefinition.InputSlot.bonded(
@@ -426,18 +437,28 @@ class GlyphRegistryTest {
         assertFalse(bonded.matches(Atom.of(0x0100).withBond(Direction.EAST, (byte) 3)));
 
         GlyphDefinition.InputSlot any = GlyphDefinition.InputSlot.occupied(0);
-        assertEquals(-1, any.atomType());
+        assertEquals(OptionalInt.empty(), any.requiredAtomType());
         assertFalse(any.matches(null));
         for (int type : new int[]{0, 3, 0x0101, 0x8000, 0xFFFF}) {
             assertTrue(any.matches(Atom.of(type)));
             assertTrue(any.matches(Atom.of(type).withBond(Direction.SOUTH, (byte) 9)));
+            GlyphDefinition.InputSlot exact = GlyphDefinition.InputSlot.of(0, type);
+            assertTrue(exact.matches(Atom.of(type)));
+            assertFalse(exact.matches(Atom.of(type ^ 0x0100)));
         }
+        AtomicInteger expectationCalls = new AtomicInteger();
         GlyphDefinition.InputSlot constrained = new GlyphDefinition.InputSlot(
-                0, -1, (byte) 3, Direction.EAST, atom -> atom.type() >= 0x8000);
+                0, OptionalInt.empty(), (byte) 3, Direction.EAST, atom -> {
+                    expectationCalls.incrementAndGet();
+                    return atom.type() >= 0x8000;
+                });
         assertFalse(constrained.matches(null));
+        assertEquals(0, expectationCalls.get(), "缺少原子时不能调用自定义判据");
         assertFalse(constrained.matches(Atom.of(0).withBond(Direction.EAST, (byte) 3)));
         assertFalse(constrained.matches(Atom.of(0xFFFF)));
+        assertFalse(constrained.matches(Atom.of(0xFFFF).withBond(Direction.EAST, (byte) 4)));
         assertTrue(constrained.matches(Atom.of(0xFFFF).withBond(Direction.EAST, (byte) 3)));
+        assertEquals(4, expectationCalls.get());
     }
 
     // ---------- 编码规则 ----------

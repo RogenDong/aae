@@ -312,6 +312,11 @@ class GlyphRuntimeTest {
                 List.of(),
                 context -> calls.add("cycle=" + context.cycle())));
 
+        GlyphRuntimeFixture missingInput = new GlyphRuntimeFixture(
+                List.of(), glyphs(new GlyphSpec(glyphType, new GridPoint(2, 2))));
+        missingInput.step();
+        assertTrue(calls.isEmpty(), "输入格为空时符文必须整条跳过");
+
         GlyphRuntimeFixture wrongType = new GlyphRuntimeFixture(
                 List.of(InputSpec.single(new GridPoint(2, 2), sampleAtom())),
                 glyphs(new GlyphSpec(glyphType,
@@ -325,6 +330,28 @@ class GlyphRuntimeTest {
                         new GridPoint(2, 2), Direction.NORTH)));
         matching.step();
         assertEquals(2, calls.size(), "类型匹配时两个半周期各执行一次");
+
+        String occupiedType = uniqueTypeId("occupied-input");
+        try (var handle = GlyphRegistry.global().register(GlyphDefinition.of(
+                occupiedType,
+                List.of(new GridPoint(0, 0)),
+                List.of(GlyphDefinition.InputSlot.occupied(0)),
+                List.of(),
+                context -> calls.add("occupied")))) {
+            calls.clear();
+            List<GlyphSpec> occupiedGlyphs = glyphs(new GlyphSpec(occupiedType, new GridPoint(2, 2)));
+            // 先检查空锚点，再依次放入零编码、普通和高位类型；有原子时两个半周期都应执行。
+            GlyphRuntimeFixture empty = new GlyphRuntimeFixture(List.of(), occupiedGlyphs);
+            empty.step();
+            assertTrue(calls.isEmpty(), "存在性声明仍要求输入格有原子");
+            for (int type : new int[]{0, 5, 0x0101, 0x8000, 0xFFFF}) {
+                calls.clear();
+                GlyphRuntimeFixture occupied = new GlyphRuntimeFixture(
+                        List.of(InputSpec.single(new GridPoint(2, 2), Atom.of(type))), occupiedGlyphs);
+                occupied.step();
+                assertEquals(2, calls.size(), "存在性声明应接受原子类型 " + type);
+            }
+        }
     }
 
     @Test

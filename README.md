@@ -309,9 +309,11 @@ git status --short
 都使用该索引；槽位必须属于定义的 placeholder，输入、输出各自不能重复，也不能共享索引。
 非法索引抛出 `IndexOutOfBoundsException`，消息包含索引、占位数量和符文类型。
 
-`InputSlot` 的原子类型参数为 `int`。`of(position, type)`、`bonded(...)` 精确匹配
-`0..0xFFFF` 的类型，包含 `0`；`occupied(position)` 使用 `-1` 通配，但仍要求格点上有原子。
-直接调用 `InputSlot` 构造器时也可用 `-1` 组合通配、键要求和自定义判据；其他越界类型被拒绝。
+所有 `InputSlot` 都要求格点上有原子，`requiredAtomType()` 返回独立的 `OptionalInt` 类型约束。
+`occupied(position)` 的类型约束为空；`of(position, type)`、`bonded(...)` 及接收 `int` 类型的
+构造器精确匹配 `0..0xFFFF` 的类型，负数及越界类型均被拒绝。
+完整构造器可用 `OptionalInt.empty()` 组合不限制类型、键要求和自定义判据，或用
+`OptionalInt.of(type)` 附加精确类型约束；`requiredAtomType` 不接受 `null`。
 
 每个半周期共用一个棋盘视图，每次执行符文前重新绑定当前实例，索引按该定义和实例朝向
 解析成世界格点。方向参数使用世界方向；方向键操作只允许连接当前 placeholder 内的邻居，
