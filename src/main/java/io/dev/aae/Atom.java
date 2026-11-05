@@ -154,6 +154,13 @@ public record Atom(int type, int bondCodes) {
     /**
      * 替换指定方向的键类型；传入的字节原样写入。
      */
+    public Atom withBond(Direction direction, int bondType) {
+        return this.withBond(direction, (byte) bondType);
+    }
+
+    /**
+     * 替换指定方向的键类型；传入的字节原样写入。
+     */
     public Atom withBond(Direction direction, byte bondType) {
         Objects.requireNonNull(direction, "direction");
         int cleared = bondCodes & ~(DIRECTION_MASK << shift(direction));

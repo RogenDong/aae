@@ -91,10 +91,11 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void inputProducesMultiatomBondedMolecules() {
-        Atom eastBonded = Atom.of((byte) 1).withBond(Direction.EAST, (byte) 2);
-        Atom westBonded = Atom.of((byte) 5).withBond(Direction.WEST, (byte) 2);
-        InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(0, 0), eastBonded),
-                new AtomPlacement(new GridPoint(1, 0), westBonded));
+        Atom eastBonded = Atom.of(1).withBond(Direction.EAST, 2);
+        Atom westBonded = Atom.of(5).withBond(Direction.WEST, 2);
+        InputSpec input = InputSpec.of(
+                AtomPlacement.of(0, 0, eastBonded),
+                AtomPlacement.of(1, 0, westBonded));
 
         OrthogonalSimulator simulator = new OrthogonalSimulator(
                 new SimulationPlan(List.of(), List.of(input), List.of(), 1));
@@ -109,9 +110,9 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void outputConsumesOnlyAnExactTypeBondAndShapeMatch() {
-        Atom eastBonded = Atom.of(0).withBond(Direction.EAST, (byte) 2);
-        Atom mismatchedWest = Atom.of(0x0201).withBond(Direction.WEST, (byte) 2);
-        Atom westBonded = Atom.of(0x0101).withBond(Direction.WEST, (byte) 2);
+        Atom eastBonded = Atom.of(0).withBond(Direction.EAST, 2);
+        Atom mismatchedWest = Atom.of(0x0201).withBond(Direction.WEST, 2);
+        Atom westBonded = Atom.of(0x0101).withBond(Direction.WEST, 2);
 
         OrthogonalSimulator matching = pairSimulator(
                 List.of(eastBonded, westBonded), List.of(eastBonded, westBonded));
@@ -135,9 +136,9 @@ class OrthogonalSimulatorLifecycleTest {
         for (List<Atom> actual : List.of(
                 List.of(eastBonded, mismatchedWest),
                 List.of(Atom.of(0), Atom.of(0x0101)),
-                List.of(eastBonded, Atom.of(0x0101).withBond(Direction.WEST, (byte) 3)),
-                List.of(eastBonded, Atom.of(0x0101).withBond(Direction.NORTH, (byte) 2)),
-                List.of(eastBonded, westBonded.withBond(Direction.EAST, (byte) 2)),
+                List.of(eastBonded, Atom.of(0x0101).withBond(Direction.WEST, 3)),
+                List.of(eastBonded, Atom.of(0x0101).withBond(Direction.NORTH, 2)),
+                List.of(eastBonded, westBonded.withBond(Direction.EAST, 2)),
                 List.of(eastBonded))) {
             OrthogonalSimulator mismatch = pairSimulator(actual, List.of(eastBonded, westBonded));
             mismatch.run(4);
@@ -166,8 +167,8 @@ class OrthogonalSimulatorLifecycleTest {
             throws ReflectiveOperationException {
         GridPoint west = new GridPoint(-2, 0);
         GridPoint east = new GridPoint(-1, 0);
-        Atom eastBonded = Atom.of(0).withBond(Direction.EAST, (byte) 2);
-        Atom westBonded = Atom.of(0x0101).withBond(Direction.WEST, (byte) 2);
+        Atom eastBonded = Atom.of(0).withBond(Direction.EAST, 2);
+        Atom westBonded = Atom.of(0x0101).withBond(Direction.WEST, 2);
         OrthogonalSimulator simulator = pairSimulator(
                 List.of(eastBonded, westBonded.withType(0x0201)), List.of(eastBonded, westBonded));
         simulator.run(5);
@@ -323,12 +324,13 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void grabbedMoleculesRotateAroundTheMechanismWithTheirBonds() {
-        Atom eastBonded = Atom.of(0).withBond(Direction.EAST, (byte) 2);
-        Atom westBonded = Atom.of(0xFFFF).withBond(Direction.WEST, (byte) 2);
+        Atom eastBonded = Atom.of(0).withBond(Direction.EAST, 2);
+        Atom westBonded = Atom.of(0xFFFF).withBond(Direction.WEST, 2);
         SimulationPlan plan = new SimulationPlan(
                 List.of(mechanism(0, 1, Direction.NORTH, ".fd")),
-                List.of(InputSpec.of(new AtomPlacement(new GridPoint(0, 0), eastBonded),
-                        new AtomPlacement(new GridPoint(1, 0), westBonded))),
+                List.of(InputSpec.of(
+                        AtomPlacement.of(0, 0, eastBonded),
+                        AtomPlacement.of(1, 0, westBonded))),
                 List.of(),
                 1);
 
@@ -465,7 +467,7 @@ class OrthogonalSimulatorLifecycleTest {
         // 两步向西搬运，输出不与输入相交；两臂分别携带，缺键样本也能完整抵达输出。
         List<AtomPlacement> inputs = new ArrayList<>();
         for (int i = 0; i < inputAtoms.size(); i++) {
-            inputs.add(new AtomPlacement(new GridPoint(i, 0), inputAtoms.get(i)));
+            inputs.add(AtomPlacement.of(i, 0, inputAtoms.get(i)));
         }
         SimulationPlan plan = new SimulationPlan(
                 List.of(mechanism(0, 1, Direction.NORTH, ".fggr"),
@@ -473,8 +475,9 @@ class OrthogonalSimulatorLifecycleTest {
                 List.of(TrackBuilder.start(0, 1).west().west().noLoop(),
                         TrackBuilder.start(1, -1).west().west().noLoop()),
                 List.of(new InputSpec(inputs)),
-                List.of(OutputSpec.of(new AtomPlacement(new GridPoint(-2, 0), outputAtoms.get(0)),
-                        new AtomPlacement(new GridPoint(-1, 0), outputAtoms.get(1)))), 1);
+                List.of(OutputSpec.of(
+                        AtomPlacement.of(-2, 0, outputAtoms.get(0)),
+                        AtomPlacement.of(-1, 0, outputAtoms.get(1)))), 1);
         return new OrthogonalSimulator(plan);
     }
 

@@ -31,8 +31,8 @@ class GlyphBoardViewTest {
                 () -> view.entityAt(index), () -> view.moleculeAt(index),
                 () -> view.grabCountAt(index), () -> view.isBonded(index, Direction.EAST),
                 () -> view.bondedDirections(index), () -> view.wasJustUnbonded(index, Direction.EAST),
-                () -> view.setType(index, (byte) 2), () -> view.spawn(index, Atom.of((byte) 1)),
-                () -> view.queueSpawn(index, Atom.of((byte) 1)), () -> view.remove(index),
+                () -> view.setType(index, (byte) 2), () -> view.spawn(index, Atom.of(1)),
+                () -> view.queueSpawn(index, Atom.of(1)), () -> view.remove(index),
                 () -> view.bond(index, Direction.EAST, (byte) 1),
                 () -> view.unbond(index, Direction.EAST));
     }
@@ -59,9 +59,9 @@ class GlyphBoardViewTest {
         GridPoint east = ORIGIN.translate(Direction.EAST);
         GridPoint west = ORIGIN.translate(Direction.WEST);
         bind(List.of(ORIGIN, east));
-        view.spawn(0, Atom.of((byte) 1));
-        view.spawn(1, Atom.of((byte) 2));
-        grid.put(west, Atom.of((byte) 3));
+        view.spawn(0, Atom.of(1));
+        view.spawn(1, Atom.of(2));
+        grid.put(west, Atom.of(3));
         grid.bond(ORIGIN, Direction.WEST, (byte) 1);
         assertFalse(view.isBonded(0, Direction.WEST));
         assertEquals(Set.of(), view.bondedDirections(0));
@@ -115,7 +115,7 @@ class GlyphBoardViewTest {
         }
         grid.put(ORIGIN, grid.get(ORIGIN).withoutBonds());
         GridPoint outside = ORIGIN.translate(Direction.NORTH);
-        grid.put(outside, Atom.of((byte) 4).withBond(Direction.SOUTH, (byte) 1));
+        grid.put(outside, Atom.of(4).withBond(Direction.SOUTH, 1));
         assertEquals(TryResult.APPLIED, view.remove(0));
         assertEquals(TryResult.SKIPPED, view.remove(0));
         assertEquals(0L, view.entityAt(0));
@@ -134,8 +134,8 @@ class GlyphBoardViewTest {
         GridPoint east = ORIGIN.translate(Direction.EAST);
         bind(List.of(ORIGIN, east));
         // 直接测试半周期视图，避免 beginCycle 提前清除待覆盖的临时键。
-        grid.put(ORIGIN, Atom.of((byte) 3).withBond(Direction.EAST, (byte) sourceCode));
-        grid.put(east, Atom.of((byte) 4).withBond(Direction.WEST, (byte) targetCode));
+        grid.put(ORIGIN, Atom.of(3).withBond(Direction.EAST, sourceCode));
+        grid.put(east, Atom.of(4).withBond(Direction.WEST, targetCode));
 
         assertEquals(expected, view.bond(0, Direction.EAST, (byte) 2));
 
@@ -149,7 +149,7 @@ class GlyphBoardViewTest {
     @ValueSource(ints = {0, 1})
     void bondingWithEitherAtomMissingLeavesTheOtherAtomUntouched(int occupiedIndex) {
         bind(List.of(ORIGIN, ORIGIN.translate(Direction.EAST)));
-        Atom atom = Atom.of((byte) 3);
+        Atom atom = Atom.of(3);
         view.spawn(occupiedIndex, atom);
 
         assertEquals(TryResult.SKIPPED, view.bond(0, Direction.EAST, (byte) 2));

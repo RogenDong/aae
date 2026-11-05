@@ -94,13 +94,14 @@ class SimulationPlanTest {
         assertThrows(IllegalArgumentException.class, () -> OutputSpec.of());
         assertThrows(
                 IllegalArgumentException.class,
-                () -> InputSpec.of(new AtomPlacement(new GridPoint(0, 0), sampleAtom()),
-                        new AtomPlacement(new GridPoint(0, 0), otherAtom())));
+                () -> InputSpec.of(
+                        AtomPlacement.of(0, 0, sampleAtom()),
+                        AtomPlacement.of(0, 0, otherAtom())));
 
         GridPoint west = new GridPoint(0, 0);
         GridPoint east = new GridPoint(1, 0);
-        Atom eastBond = sampleAtom().withBond(Direction.EAST, (byte) 2);
-        Atom westBond = otherAtom().withBond(Direction.WEST, (byte) 2);
+        Atom eastBond = sampleAtom().withBond(Direction.EAST, 2);
+        Atom westBond = otherAtom().withBond(Direction.WEST, 2);
         assertDoesNotThrow(() -> OutputSpec.single(west, sampleAtom()));
         assertDoesNotThrow(() -> OutputSpec.single(
                 new GridPoint(Long.MAX_VALUE, Long.MIN_VALUE), sampleAtom()));
@@ -113,7 +114,7 @@ class SimulationPlanTest {
                 () -> OutputSpec.of(new AtomPlacement(west, sampleAtom()),
                         new AtomPlacement(east, otherAtom())));
         for (Atom invalidEast : List.of(otherAtom(),
-                otherAtom().withBond(Direction.WEST, (byte) 3))) {
+                otherAtom().withBond(Direction.WEST, 3))) {
             var failure = assertThrows(IllegalArgumentException.class,
                     () -> OutputSpec.of(new AtomPlacement(west, eastBond),
                             new AtomPlacement(east, invalidEast)));
@@ -135,7 +136,7 @@ class SimulationPlanTest {
                     direction == Direction.NORTH ? Long.MIN_VALUE : Long.MAX_VALUE);
             var overflow = assertThrows(IllegalArgumentException.class,
                     () -> OutputSpec.single(boundary,
-                            sampleAtom().withBond(direction, (byte) 2)));
+                            sampleAtom().withBond(direction, 2)));
             assertTrue(overflow.getMessage().contains(boundary.toString()));
             assertTrue(overflow.getMessage().contains(direction.name()));
             assertTrue(overflow.getMessage().contains("overflows"));
@@ -150,10 +151,10 @@ class SimulationPlanTest {
     }
 
     private static Atom sampleAtom() {
-        return Atom.of((byte) 1);
+        return Atom.of(1);
     }
 
     private static Atom otherAtom() {
-        return Atom.of((byte) 5);
+        return Atom.of(5);
     }
 }

@@ -18,7 +18,7 @@ class MoleculeBfsTest {
     private static AtomGrid chain(int length) {
         AtomGrid grid = new AtomGrid();
         for (int index = 0; index < length; index++) {
-            grid.put(new GridPoint(index, 0), Atom.of((byte) 1));
+            grid.put(new GridPoint(index, 0), Atom.of(1));
         }
         for (int index = 0; index + 1 < length; index++) {
             grid.bond(new GridPoint(index, 0), Direction.EAST, (byte) 2);
@@ -53,7 +53,7 @@ class MoleculeBfsTest {
     void isolatedAtomIsAMoleculeOfOne() {
         AtomGrid grid = new AtomGrid();
         GridPoint position = new GridPoint(-7, 4);
-        grid.put(position, Atom.of((byte) 16));
+        grid.put(position, Atom.of(16));
 
         Molecule molecule = MoleculeBfs.moleculeAt(grid, position);
 
@@ -95,17 +95,17 @@ class MoleculeBfsTest {
     void breadthFirstSearchFollowsBranchingBonds() {
         AtomGrid grid = new AtomGrid();
         GridPoint centre = new GridPoint(0, 0);
-        grid.put(centre, Atom.of((byte) 10));
+        grid.put(centre, Atom.of(10));
         for (Direction direction : Direction.values()) {
-            grid.put(centre.translate(direction), Atom.of((byte) 2));
+            grid.put(centre.translate(direction), Atom.of(2));
             grid.bond(centre, direction, (byte) 2);
         }
 
         Molecule molecule = MoleculeBfs.moleculeAt(grid, centre);
 
         assertEquals(5, molecule.size());
-        assertEquals(1, molecule.countOf((byte) 10));
-        assertEquals(4, molecule.countOf((byte) 2));
+        assertEquals(1, molecule.countOf(10));
+        assertEquals(4, molecule.countOf(2));
         assertEquals(
                 List.of(
                         centre,
@@ -124,7 +124,7 @@ class MoleculeBfsTest {
                 new GridPoint(0, 0), new GridPoint(1, 0),
                 new GridPoint(1, 1), new GridPoint(0, 1));
         for (GridPoint corner : corners) {
-            grid.put(corner, Atom.of((byte) 3));
+            grid.put(corner, Atom.of(3));
         }
         grid.bond(corners.get(0), Direction.EAST, (byte) 2);
         grid.bond(corners.get(1), Direction.SOUTH, (byte) 2);
@@ -147,15 +147,15 @@ class MoleculeBfsTest {
     void disconnectedGroupsBecomeSeparateMolecules() {
         AtomGrid grid = new AtomGrid();
         for (int index = 0; index < 2; index++) {
-            grid.put(new GridPoint(index, 0), Atom.of((byte) 1));
+            grid.put(new GridPoint(index, 0), Atom.of(1));
         }
         grid.bond(new GridPoint(0, 0), Direction.EAST, (byte) 2);
         for (int index = 10; index < 13; index++) {
-            grid.put(new GridPoint(index, 0), Atom.of((byte) 9));
+            grid.put(new GridPoint(index, 0), Atom.of(9));
         }
         grid.bond(new GridPoint(10, 0), Direction.EAST, (byte) 2);
         grid.bond(new GridPoint(11, 0), Direction.EAST, (byte) 2);
-        grid.put(new GridPoint(0, 40), Atom.of((byte) 14));
+        grid.put(new GridPoint(0, 40), Atom.of(14));
 
         List<Molecule> molecules = MoleculeBfs.molecules(grid);
 
@@ -170,7 +170,7 @@ class MoleculeBfsTest {
     void cellsWithoutNeighboursAreTheirOwnMolecules() {
         AtomGrid grid = new AtomGrid();
         for (int index = 0; index < 5; index++) {
-            grid.put(new GridPoint(index * 3, 0), Atom.of((byte) 11));
+            grid.put(new GridPoint(index * 3, 0), Atom.of(11));
         }
 
         List<Molecule> molecules = MoleculeBfs.molecules(grid);
@@ -186,8 +186,8 @@ class MoleculeBfsTest {
         AtomGrid grid = chain(4);
         GridPoint left = new GridPoint(0, 7);
         GridPoint right = new GridPoint(1, 7);
-        grid.put(left, Atom.of((byte) 7));
-        grid.put(right, Atom.of((byte) 8));
+        grid.put(left, Atom.of(7));
+        grid.put(right, Atom.of(8));
         grid.bond(left, Direction.EAST, (byte) 2);
 
         int covered = 0;
@@ -209,8 +209,8 @@ class MoleculeBfsTest {
         AtomGrid grid = new AtomGrid();
         GridPoint left = new GridPoint(0, 0);
         GridPoint right = new GridPoint(1, 0);
-        grid.put(left, Atom.of((byte) 1).withBond(Direction.EAST, (byte) 2));
-        grid.put(right, Atom.of((byte) 1));
+        grid.put(left, Atom.of(1).withBond(Direction.EAST, 2));
+        grid.put(right, Atom.of(1));
 
         assertEquals(1, MoleculeBfs.moleculeAt(grid, left).size());
         assertEquals(1, MoleculeBfs.moleculeAt(grid, right).size());
@@ -224,8 +224,8 @@ class MoleculeBfsTest {
         AtomGrid grid = new AtomGrid();
         GridPoint left = new GridPoint(0, 0);
         GridPoint right = new GridPoint(1, 0);
-        grid.put(left, Atom.of((byte) 1).withBond(Direction.EAST, (byte) 2));
-        grid.put(right, Atom.of((byte) 1).withBond(Direction.WEST, (byte) 5));
+        grid.put(left, Atom.of(1).withBond(Direction.EAST, 2));
+        grid.put(right, Atom.of(1).withBond(Direction.WEST, 5));
 
         assertEquals(2, MoleculeBfs.moleculeAt(grid, left).size());
         assertTrue(MoleculeBfs.areConnected(grid, left, right));
@@ -236,8 +236,8 @@ class MoleculeBfsTest {
         AtomGrid grid = new AtomGrid();
         GridPoint left = new GridPoint(0, 0);
         GridPoint right = new GridPoint(1, 0);
-        grid.put(left, Atom.of((byte) 1));
-        grid.put(right, Atom.of((byte) 1));
+        grid.put(left, Atom.of(1));
+        grid.put(right, Atom.of(1));
         grid.bond(left, Direction.EAST, Atom.TEMPORARY_BOND);
 
         // 参考 omsim 的 get_molecule 使用 BOND_LOW_BITS & ~RECENT_BONDS。
@@ -254,7 +254,7 @@ class MoleculeBfsTest {
     @Test
     void mixingRecentAndRealBondsOnlySplitsAtTheRecentLink() {
         AtomGrid grid = chain(3);
-        grid.put(new GridPoint(3, 0), Atom.of((byte) 1));
+        grid.put(new GridPoint(3, 0), Atom.of(1));
         grid.bond(new GridPoint(2, 0), Direction.EAST, Atom.TEMPORARY_BOND);
 
         assertEquals(3, MoleculeBfs.moleculeAt(grid, new GridPoint(0, 0)).size());
@@ -315,8 +315,8 @@ class MoleculeBfsTest {
 
     @Test
     void placementTranslateKeepsTheAtomAndMovesThePosition() {
-        Atom atom = Atom.of(0xFFFF).withBond(Direction.NORTH, (byte) 2);
-        AtomPlacement placement = new AtomPlacement(new GridPoint(2, 2), atom);
+        Atom atom = Atom.of(0xFFFF).withBond(Direction.NORTH, 2);
+        AtomPlacement placement = AtomPlacement.of(2, 2, atom);
 
         AtomPlacement moved = placement.translate(Direction.NORTH);
 

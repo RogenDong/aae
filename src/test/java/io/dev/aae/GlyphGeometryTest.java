@@ -48,12 +48,12 @@ class GlyphGeometryTest {
                     assertEquals(worldInput.translate(Direction.SOUTH),
                             context.neighbor(1, Direction.SOUTH));
                     assertEquals(TryResult.APPLIED,
-                            context.board().spawn(2, Atom.of((byte) 2)));
+                            context.board().spawn(2, Atom.of(2)));
                 });
         AtomPlacement source = new AtomPlacement(worldInput,
-                Atom.of((byte) 1).withBond(Direction.EAST, bondType));
+                Atom.of(1).withBond(Direction.EAST, bondType));
         AtomPlacement neighbor = new AtomPlacement(worldInput.translate(Direction.EAST),
-                Atom.of((byte) 3).withBond(Direction.WEST, bondType));
+                Atom.of(3).withBond(Direction.WEST, bondType));
 
         try (var handle = GlyphRegistry.global().register(definition)) {
             GridPoint worldOffset = new GridPoint(inputX - anchor.x(), inputY - anchor.y());
@@ -81,7 +81,7 @@ class GlyphGeometryTest {
 
             GlyphRuntimeFixture occupiedOutput = new GlyphRuntimeFixture(
                     List.of(InputSpec.of(source, neighbor,
-                            new AtomPlacement(worldOutput, Atom.of((byte) 4)))), List.of(spec));
+                            new AtomPlacement(worldOutput, Atom.of(4)))), List.of(spec));
             occupiedOutput.step();
             assertEquals((byte) 4, occupiedOutput.atomAt(worldOutput).type());
             assertEquals(1, calls.get());

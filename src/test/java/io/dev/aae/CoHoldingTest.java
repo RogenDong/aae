@@ -10,7 +10,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class CoHoldingTest {
     private static final GridPoint ORIGIN = new GridPoint(0, 0);
-    private static final Atom ATOM = Atom.of((byte) 1);
+    private static final Atom ATOM = Atom.of(1);
 
     @ParameterizedTest
     @CsvSource({"f.,f.", "f.,.f"})
@@ -130,8 +130,8 @@ class CoHoldingTest {
 
     @Test
     void identicalTranslationsMoveACoHeldMoleculeOnlyOnce() {
-        Atom left = ATOM.withBond(Direction.EAST, (byte) 2);
-        Atom right = Atom.of((byte) 3).withBond(Direction.WEST, (byte) 2);
+        Atom left = ATOM.withBond(Direction.EAST, 2);
+        Atom right = Atom.of(3).withBond(Direction.WEST, 2);
         OrthogonalSimulator simulator = simulator(
                 List.of(arm(0, 1, Direction.NORTH, 1, "fg"),
                         arm(1, -1, Direction.SOUTH, 1, "fg")),
@@ -139,7 +139,7 @@ class CoHoldingTest {
                         TrackBuilder.start(0, 1).west().noLoop(),
                         TrackBuilder.start(1, -1).west().noLoop()),
                 InputSpec.of(new AtomPlacement(ORIGIN, left),
-                        new AtomPlacement(new GridPoint(1, 0), right)));
+                        AtomPlacement.of(1, 0, right)));
 
         simulator.run(2);
 
@@ -158,15 +158,15 @@ class CoHoldingTest {
         OrthogonalSimulator simulator = simulator(
                 List.of(arm(-1, 0, Direction.EAST, 1, "fe"),
                         arm(0, 1, Direction.NORTH, 1, "fe")), List.of(),
-                InputSpec.of(new AtomPlacement(ORIGIN, ATOM.withBond(Direction.NORTH, (byte) 2)),
-                        new AtomPlacement(new GridPoint(0, -1),
-                                Atom.of((byte) 3).withBond(Direction.SOUTH, (byte) 2))));
+                InputSpec.of(new AtomPlacement(ORIGIN, ATOM.withBond(Direction.NORTH, 2)),
+                        AtomPlacement.of(0, -1,
+                                Atom.of(3).withBond(Direction.SOUTH, 2))));
 
         simulator.run(2);
 
         assertFalse(simulator.isHalted());
-        assertEquals(ATOM.withBond(Direction.EAST, (byte) 2), simulator.atomAt(ORIGIN));
-        assertEquals(Atom.of((byte) 3).withBond(Direction.WEST, (byte) 2),
+        assertEquals(ATOM.withBond(Direction.EAST, 2), simulator.atomAt(ORIGIN));
+        assertEquals(Atom.of(3).withBond(Direction.WEST, 2),
                 simulator.atomAt(new GridPoint(1, 0)));
         assertNull(simulator.atomAt(new GridPoint(0, -1)));
         assertEquals(2, simulator.boardSize());

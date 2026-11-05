@@ -35,10 +35,10 @@ class AtomTest {
     @Test
     void eachDirectionKeepsItsOwnBondByte() {
         Atom atom = Atom.of(0xFFFF)
-                .withBond(Direction.NORTH, (byte) 2)
-                .withBond(Direction.EAST, (byte) 3)
-                .withBond(Direction.SOUTH, (byte) 4)
-                .withBond(Direction.WEST, (byte) 5);
+                .withBond(Direction.NORTH, 2)
+                .withBond(Direction.EAST, 3)
+                .withBond(Direction.SOUTH, 4)
+                .withBond(Direction.WEST, 5);
 
         assertEquals((byte) 2, atom.bondType(Direction.NORTH));
         assertEquals((byte) 3, atom.bondType(Direction.EAST));
@@ -53,11 +53,11 @@ class AtomTest {
 
     @Test
     void writingOneDirectionLeavesTheOtherThreeAlone() {
-        Atom base = Atom.of((byte) 5)
-                .withBond(Direction.NORTH, (byte) 2)
-                .withBond(Direction.SOUTH, (byte) 2);
+        Atom base = Atom.of(5)
+                .withBond(Direction.NORTH, 2)
+                .withBond(Direction.SOUTH, 2);
 
-        Atom rewritten = base.withBond(Direction.EAST, (byte) 5);
+        Atom rewritten = base.withBond(Direction.EAST, 5);
 
         assertEquals((byte) 2, rewritten.bondType(Direction.NORTH));
         assertEquals((byte) 2, rewritten.bondType(Direction.SOUTH));
@@ -68,7 +68,7 @@ class AtomTest {
 
     @Test
     void temporaryBondIsNotARealBond() {
-        Atom atom = Atom.of((byte) 4).withBond(Direction.WEST, Atom.TEMPORARY_BOND);
+        Atom atom = Atom.of(4).withBond(Direction.WEST, Atom.TEMPORARY_BOND);
 
         assertTrue(atom.hasBond(Direction.WEST));
         assertFalse(atom.hasRealBond(Direction.WEST));
@@ -88,8 +88,8 @@ class AtomTest {
     @Test
     void withoutBondAndWithoutBondsClearExactlyWhatTheySay() {
         Atom atom = Atom.of(0x8000)
-                .withBond(Direction.NORTH, (byte) 2)
-                .withBond(Direction.EAST, (byte) 2);
+                .withBond(Direction.NORTH, 2)
+                .withBond(Direction.EAST, 2);
 
         Atom cleared = atom.withoutBond(Direction.NORTH);
         assertEquals((byte) 0, cleared.bondType(Direction.NORTH));
@@ -107,7 +107,7 @@ class AtomTest {
 
     @Test
     void withTypeKeepsTheBondBytes() {
-        Atom atom = Atom.of(0x0101).withBond(Direction.EAST, (byte) 2);
+        Atom atom = Atom.of(0x0101).withBond(Direction.EAST, 2);
 
         for (int type : new int[]{0, 0xFF, 0x8000, 0xFFFF}) {
             Atom transformed = atom.withType(type);
@@ -123,9 +123,9 @@ class AtomTest {
 
     @Test
     void rotatingBondsMovesThemClockwise() {
-        Atom atom = Atom.of((byte) 9)
-                .withBond(Direction.NORTH, (byte) 2)
-                .withBond(Direction.EAST, (byte) 4);
+        Atom atom = Atom.of(9)
+                .withBond(Direction.NORTH, 2)
+                .withBond(Direction.EAST, 4);
 
         Atom once = atom.rotateBonds(1);
         assertEquals((byte) 2, once.bondType(Direction.EAST));
@@ -140,8 +140,8 @@ class AtomTest {
     @Test
     void rotatingByAFullTurnOrNegativeTurnsIsWellDefined() {
         Atom atom = Atom.of(0xFFFF)
-                .withBond(Direction.NORTH, (byte) 2)
-                .withBond(Direction.SOUTH, (byte) 1);
+                .withBond(Direction.NORTH, 2)
+                .withBond(Direction.SOUTH, 1);
 
         assertEquals(atom, atom.rotateBonds(0));
         assertEquals(atom, atom.rotateBonds(4));
@@ -156,8 +156,8 @@ class AtomTest {
     @Test
     void packedCodesRoundTripAndAtomTypeIsValidated() {
         Atom atom = Atom.of(0x8000)
-                .withBond(Direction.NORTH, (byte) 5)
-                .withBond(Direction.SOUTH, (byte) 1);
+                .withBond(Direction.NORTH, 5)
+                .withBond(Direction.SOUTH, 1);
 
         assertEquals(atom, new Atom(atom.type(), atom.bondCodes()));
 
@@ -181,18 +181,18 @@ class AtomTest {
 
     @Test
     void equalityIsByTypeAndBondBytes() {
-        Atom atom = Atom.of(0x0101).withBond(Direction.NORTH, (byte) 2);
+        Atom atom = Atom.of(0x0101).withBond(Direction.NORTH, 2);
 
         assertEquals(atom, new Atom(0x0101, atom.bondCodes()));
         assertEquals(atom.hashCode(),
                 new Atom(0x0101, atom.bondCodes()).hashCode());
         assertNotEquals(atom, atom.withType(0x0201));
-        assertNotEquals(atom, atom.withBond(Direction.EAST, (byte) 2));
+        assertNotEquals(atom, atom.withBond(Direction.EAST, 2));
     }
 
     @Test
     void toStringUsesRawNumbers() {
-        Atom atom = Atom.of(0xFFFF).withBond(Direction.WEST, (byte) 2);
+        Atom atom = Atom.of(0xFFFF).withBond(Direction.WEST, 2);
 
         assertEquals("type=65535 N=0 E=0 S=0 W=2", atom.toString());
     }

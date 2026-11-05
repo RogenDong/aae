@@ -432,16 +432,16 @@ class GlyphRegistryTest {
         GlyphDefinition.InputSlot bonded = GlyphDefinition.InputSlot.bonded(
                 0, 0, Direction.EAST, (byte) 3);
         assertFalse(bonded.matches(Atom.of(0)));
-        assertTrue(bonded.matches(Atom.of(0).withBond(Direction.EAST, (byte) 3)));
-        assertFalse(bonded.matches(Atom.of(0).withBond(Direction.EAST, (byte) 4)));
-        assertFalse(bonded.matches(Atom.of(0x0100).withBond(Direction.EAST, (byte) 3)));
+        assertTrue(bonded.matches(Atom.of(0).withBond(Direction.EAST, 3)));
+        assertFalse(bonded.matches(Atom.of(0).withBond(Direction.EAST, 4)));
+        assertFalse(bonded.matches(Atom.of(0x0100).withBond(Direction.EAST, 3)));
 
         GlyphDefinition.InputSlot any = GlyphDefinition.InputSlot.occupied(0);
         assertEquals(OptionalInt.empty(), any.requiredAtomType());
         assertFalse(any.matches(null));
         for (int type : new int[]{0, 3, 0x0101, 0x8000, 0xFFFF}) {
             assertTrue(any.matches(Atom.of(type)));
-            assertTrue(any.matches(Atom.of(type).withBond(Direction.SOUTH, (byte) 9)));
+            assertTrue(any.matches(Atom.of(type).withBond(Direction.SOUTH, 9)));
             GlyphDefinition.InputSlot exact = GlyphDefinition.InputSlot.of(0, type);
             assertTrue(exact.matches(Atom.of(type)));
             assertFalse(exact.matches(Atom.of(type ^ 0x0100)));
@@ -454,10 +454,10 @@ class GlyphRegistryTest {
                 });
         assertFalse(constrained.matches(null));
         assertEquals(0, expectationCalls.get(), "缺少原子时不能调用自定义判据");
-        assertFalse(constrained.matches(Atom.of(0).withBond(Direction.EAST, (byte) 3)));
+        assertFalse(constrained.matches(Atom.of(0).withBond(Direction.EAST, 3)));
         assertFalse(constrained.matches(Atom.of(0xFFFF)));
-        assertFalse(constrained.matches(Atom.of(0xFFFF).withBond(Direction.EAST, (byte) 4)));
-        assertTrue(constrained.matches(Atom.of(0xFFFF).withBond(Direction.EAST, (byte) 3)));
+        assertFalse(constrained.matches(Atom.of(0xFFFF).withBond(Direction.EAST, 4)));
+        assertTrue(constrained.matches(Atom.of(0xFFFF).withBond(Direction.EAST, 3)));
         assertEquals(4, expectationCalls.get());
     }
 

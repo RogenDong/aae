@@ -3,7 +3,6 @@ package io.dev.aae;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
@@ -15,8 +14,8 @@ class AtomGridTest {
 
     private static AtomGrid twoAtoms() {
         AtomGrid grid = new AtomGrid();
-        grid.put(ORIGIN, Atom.of((byte) 1));
-        grid.put(ORIGIN.translate(Direction.EAST), Atom.of((byte) 5));
+        grid.put(ORIGIN, Atom.of(1));
+        grid.put(ORIGIN.translate(Direction.EAST), Atom.of(5));
         return grid;
     }
 
@@ -28,7 +27,7 @@ class AtomGridTest {
         assertNull(grid.get(ORIGIN));
         assertTrue(grid.atomAt(ORIGIN).isEmpty());
 
-        grid.put(ORIGIN, Atom.of((byte) 7));
+        grid.put(ORIGIN, Atom.of(7));
         assertEquals(1, grid.size());
         assertTrue(grid.contains(ORIGIN));
         assertEquals((byte) 7, grid.get(ORIGIN).type());
@@ -44,8 +43,8 @@ class AtomGridTest {
         AtomGrid grid = new AtomGrid();
         GridPoint second = new GridPoint(0, 0);
         GridPoint first = new GridPoint(5, 5);
-        grid.put(first, Atom.of((byte) 1));
-        grid.put(second, Atom.of((byte) 1));
+        grid.put(first, Atom.of(1));
+        grid.put(second, Atom.of(1));
 
         assertEquals(List.copyOf(grid.positions()), List.of(first, second));
     }
@@ -55,8 +54,8 @@ class AtomGridTest {
         AtomGrid grid = new AtomGrid();
         assertTrue(grid.bounds().isEmpty());
 
-        grid.put(new GridPoint(-4, 7), Atom.of((byte) 1));
-        grid.put(new GridPoint(2, -3), Atom.of((byte) 12));
+        grid.put(new GridPoint(-4, 7), Atom.of(1));
+        grid.put(new GridPoint(2, -3), Atom.of(12));
 
         assertEquals(new GridBounds(-4, -3, 2, 7), grid.bounds().orElseThrow());
     }
@@ -126,8 +125,8 @@ class AtomGridTest {
     @Test
     void oneSidedBondsDoNotCountAsConnected() {
         AtomGrid grid = new AtomGrid();
-        grid.put(ORIGIN, Atom.of((byte) 1).withBond(Direction.EAST, (byte) 2));
-        grid.put(ORIGIN.translate(Direction.EAST), Atom.of((byte) 1));
+        grid.put(ORIGIN, Atom.of(1).withBond(Direction.EAST, 2));
+        grid.put(ORIGIN.translate(Direction.EAST), Atom.of(1));
 
         assertFalse(grid.isBonded(ORIGIN, Direction.EAST));
         // 判据再宽松也要求两侧同时声明键，否则邻居随时可以单方面“被连上”。
@@ -149,12 +148,12 @@ class AtomGridTest {
     void removingAMoleculeClearsEveryAtomItOwns() {
         AtomGrid grid = new AtomGrid();
         for (int index = 0; index < 4; index++) {
-            grid.put(new GridPoint(index, 0), Atom.of((byte) 1));
+            grid.put(new GridPoint(index, 0), Atom.of(1));
         }
         for (int index = 0; index + 1 < 4; index++) {
             grid.bond(new GridPoint(index, 0), Direction.EAST, (byte) 2);
         }
-        grid.put(new GridPoint(0, 9), Atom.of((byte) 14));
+        grid.put(new GridPoint(0, 9), Atom.of(14));
 
         Molecule molecule = MoleculeBfs.moleculeAt(grid, new GridPoint(0, 0));
         assertEquals(4, grid.remove(molecule));

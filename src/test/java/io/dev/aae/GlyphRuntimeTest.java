@@ -36,9 +36,12 @@ class GlyphRuntimeTest {
                                     InstructionTape.once("fggr")),
                             new MechanismSpec(new GridPoint(-1, -1), Direction.SOUTH,
                                     InstructionTape.once("fggr"))),
-                    List.of(track(-2, 1, -1, 1, 0, 1), track(-1, -1, 0, -1, 1, -1)),
-                    List.of(InputSpec.of(new AtomPlacement(new GridPoint(-2, 0), sampleAtom()),
-                            new AtomPlacement(new GridPoint(-1, 0), otherAtom()))), List.of(),
+                    List.of(TrackBuilder.start(-2, 1).east().east().noLoop(),
+                            TrackBuilder.start(-1, -1).east().east().noLoop()),
+                    List.of(InputSpec.of(
+                            AtomPlacement.of(-2, 0, sampleAtom()),
+                            AtomPlacement.of(-1, 0, otherAtom()))),
+                    List.of(),
                     List.of(OMGlyphs.bondingSpec(0, 0, Direction.EAST)));
             simulator.init();
             simulator.run(3);
@@ -127,8 +130,9 @@ class GlyphRuntimeTest {
         // 在同一符文回调内先拆键再删除，避免声明两个占位重叠的符文。
         try (var handle = GlyphRegistry.global().register(removal)) {
             GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
-                    List.of(InputSpec.of(new AtomPlacement(new GridPoint(0, 0), eastBonded()),
-                            new AtomPlacement(new GridPoint(1, 0), westBonded()))),
+                    List.of(InputSpec.of(
+                            AtomPlacement.of(0, 0, eastBonded()),
+                            AtomPlacement.of(1, 0, westBonded()))),
                     List.of(new GlyphSpec(removalType, new GridPoint(0, 0), Direction.EAST)));
 
             simulator.step();
@@ -203,8 +207,8 @@ class GlyphRuntimeTest {
 
     @Test
     void deferredProductsExpireBeforeTheCellFreesInTheNextCycle() {
-        Atom occupant = Atom.of((byte) 7);
-        Atom product = Atom.of((byte) 9);
+        Atom occupant = Atom.of(7);
+        Atom product = Atom.of(9);
         String producerType = uniqueTypeId("queued-spawn");
         GlyphRegistry.global().register(new GlyphDefinition<Void>(
                 producerType,
@@ -241,7 +245,7 @@ class GlyphRuntimeTest {
     @Test
     void reservedGlyphProductConflictingWithTransportRollsBackTheWholeCycle() {
         String type = uniqueTypeId("reserved-transport");
-        Atom product = Atom.of((byte) 9);
+        Atom product = Atom.of(9);
         try (var handle = GlyphRegistry.global().register(new GlyphDefinition<Integer>(
                 type, List.of(new GridPoint(0, 0)), () -> 0, (context, state) -> {
                     if (context.cycle() == 1 && context.phase().isFirstHalf()) {
@@ -274,8 +278,8 @@ class GlyphRuntimeTest {
 
     @Test
     void immediateSpawnCancelsTheQueuedProductOnTheSameCell() {
-        Atom product = Atom.of((byte) 4);
-        Atom replacement = Atom.of((byte) 6);
+        Atom product = Atom.of(4);
+        Atom replacement = Atom.of(6);
         String glyphType = uniqueTypeId("queue-then-spawn");
         GlyphRegistry.global().register(new GlyphDefinition<Void>(
                 glyphType,
@@ -325,7 +329,7 @@ class GlyphRuntimeTest {
         assertTrue(calls.isEmpty(), "输入类型不匹配时符文必须整条跳过");
 
         GlyphRuntimeFixture matching = new GlyphRuntimeFixture(
-                List.of(InputSpec.single(new GridPoint(2, 2), Atom.of((byte) 5))),
+                List.of(InputSpec.single(new GridPoint(2, 2), Atom.of(5))),
                 glyphs(new GlyphSpec(glyphType,
                         new GridPoint(2, 2), Direction.NORTH)));
         matching.step();
@@ -388,8 +392,8 @@ class GlyphRuntimeTest {
     @Test
     void glyphBusinessExceptionRollsBackTheWholeCycleAndIsRethrown() {
         IllegalStateException failure = new IllegalStateException("boom");
-        Atom carried = Atom.of(0x8000).withBond(Direction.NORTH, (byte) 0x80);
-        Atom queued = Atom.of(0).withBond(Direction.WEST, (byte) 0xFE);
+        Atom carried = Atom.of(0x8000).withBond(Direction.NORTH, 0x80);
+        Atom queued = Atom.of(0).withBond(Direction.WEST, 0xFE);
         String glyphType = uniqueTypeId("throwing");
         List<Integer> order = new ArrayList<>();
         OrthogonalSimulator[] observed = new OrthogonalSimulator[1];
@@ -606,8 +610,9 @@ class GlyphRuntimeTest {
         }));
 
         GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
-                List.of(InputSpec.of(new AtomPlacement(new GridPoint(0, 0), Atom.of((byte) 1)),
-                        new AtomPlacement(new GridPoint(5, 4), Atom.of((byte) 2)))),
+                List.of(InputSpec.of(
+                        AtomPlacement.of(0, 0, Atom.of(1)),
+                        AtomPlacement.of(5, 4, Atom.of(2)))),
                 List.of(
                         new GlyphSpec(firstType, new GridPoint(0, 0), Direction.NORTH),
                         new GlyphSpec(secondType, new GridPoint(4, 4), Direction.NORTH)));
@@ -672,24 +677,25 @@ class GlyphRuntimeTest {
     }
 
     private static InputSpec twoAtomInput(Atom first, Atom second) {
-        return InputSpec.of(new AtomPlacement(new GridPoint(0, 0), first),
-                new AtomPlacement(new GridPoint(1, 0), second));
+        return InputSpec.of(
+                AtomPlacement.of(0, 0, first),
+                AtomPlacement.of(1, 0, second));
     }
 
     private static Atom sampleAtom() {
-        return Atom.of((byte) 1);
+        return Atom.of(1);
     }
 
     private static Atom otherAtom() {
-        return Atom.of((byte) 5);
+        return Atom.of(5);
     }
 
     private static Atom eastBonded() {
-        return Atom.of((byte) 1).withBond(Direction.EAST, OMBonds.NORMAL.code);
+        return Atom.of(1).withBond(Direction.EAST, OMBonds.NORMAL.code);
     }
 
     private static Atom westBonded() {
-        return Atom.of((byte) 5).withBond(Direction.WEST, OMBonds.NORMAL.code);
+        return Atom.of(5).withBond(Direction.WEST, OMBonds.NORMAL.code);
     }
 
     private static String uniqueTypeId(String label) {

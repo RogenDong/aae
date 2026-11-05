@@ -12,7 +12,7 @@ import org.junit.jupiter.params.provider.EnumSource;
 
 class SimulationPlanLayoutTest {
     private static final GridPoint ORIGIN = new GridPoint(0, 0);
-    private static final Atom ATOM = Atom.of((byte) 1);
+    private static final Atom ATOM = Atom.of(1);
     private static final AtomicInteger UNIQUE = new AtomicInteger();
 
     @ParameterizedTest
@@ -62,7 +62,7 @@ class SimulationPlanLayoutTest {
         GridPoint collision = glyph.worldPoint(offset);
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.of(type,
                 List.of(ORIGIN, offset), context -> {}))) {
-            InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(50, 50), ATOM),
+            InputSpec input = InputSpec.of(AtomPlacement.of(50, 50, ATOM),
                     new AtomPlacement(collision, ATOM));
             var failure = assertThrows(IllegalArgumentException.class,
                     () -> new SimulationPlan(List.of(), List.of(), List.of(input), List.of(), List.of(glyph), 1));
@@ -75,11 +75,11 @@ class SimulationPlanLayoutTest {
 
     @Test
     void detectsPartialIOAndGlyphOverlaps() {
-        InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(-1, 0), ATOM),
+        InputSpec input = InputSpec.of(AtomPlacement.of(-1, 0, ATOM),
                 new AtomPlacement(ORIGIN, ATOM));
         OutputSpec output = OutputSpec.of(
-                new AtomPlacement(new GridPoint(1, 0), ATOM.withBond(Direction.WEST, (byte) 1)),
-                new AtomPlacement(ORIGIN, ATOM.withBond(Direction.EAST, (byte) 1)));
+                AtomPlacement.of(1, 0, ATOM.withBond(Direction.WEST, 1)),
+                new AtomPlacement(ORIGIN, ATOM.withBond(Direction.EAST, 1)));
         assertThrows(IllegalArgumentException.class,
                 () -> new SimulationPlan(List.of(), List.of(input), List.of(output), 1));
         String type = typeId();
@@ -131,8 +131,9 @@ class SimulationPlanLayoutTest {
             var plan = assertDoesNotThrow(() -> new SimulationPlan(
                     List.of(),
                     List.of(TrackBuilder.start(-2, -2).eastSouth().noLoop()),
-                    List.of(InputSpec.of(new AtomPlacement(new GridPoint(-2, -1), ATOM),
-                            new AtomPlacement(new GridPoint(1, 1), ATOM))),
+                    List.of(InputSpec.of(
+                            AtomPlacement.of(-2, -1, ATOM),
+                            AtomPlacement.of(1, 1, ATOM))),
                     List.of(OutputSpec.single(new GridPoint(1, 0), ATOM)),
                     List.of(new GlyphSpec(type, ORIGIN)), 1));
             assertDoesNotThrow(() -> new OrthogonalSimulator(plan));
