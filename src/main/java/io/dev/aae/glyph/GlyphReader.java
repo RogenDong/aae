@@ -1,4 +1,9 @@
-package io.dev.aae;
+package io.dev.aae.glyph;
+
+import io.dev.aae.Atom;
+import io.dev.aae.AtomGrid;
+import io.dev.aae.Direction;
+import io.dev.aae.Molecule;
 
 import java.util.Optional;
 import java.util.Set;

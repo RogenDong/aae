@@ -1,4 +1,4 @@
-package io.dev.aae;
+package io.dev.aae.glyph;
 
 import java.util.LinkedHashMap;
 import java.util.Map;

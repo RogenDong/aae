@@ -1,5 +1,9 @@
 package io.dev.aae;
 
+import io.dev.aae.glyph.GlyphDefinition;
+import io.dev.aae.glyph.GlyphRegistry;
+import io.dev.aae.glyph.GlyphSpec;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;

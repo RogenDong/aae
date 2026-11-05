@@ -1,5 +1,7 @@
 package io.dev.aae;
 
+import io.dev.aae.glyph.GlyphExecutionException;
+
 /**
  * 符文棋盘写操作的结果：{@code APPLIED} 表示条件满足并已提交，{@code SKIPPED} 表示条件
  * 不满足、本次调用被静默跳过（棋盘没有任何变化）。

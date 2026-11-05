@@ -1,5 +1,10 @@
 package io.dev.aae;
 
+import io.dev.aae.glyph.GlyphDefinition;
+import io.dev.aae.glyph.GlyphExecutionException;
+import io.dev.aae.glyph.GlyphInstance;
+import io.dev.aae.glyph.GlyphSpec;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.*;

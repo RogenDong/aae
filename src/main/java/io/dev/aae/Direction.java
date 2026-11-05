@@ -59,7 +59,7 @@ public enum Direction {
      *
      * <p>朝东时保持局部偏移不变，朝南、朝西、朝北分别顺时针旋转 90°、180°、270°。
      * 这是本项目唯一的“局部 → 世界”换算实现，
-     * {@link #localToWorld(GridPoint, GridPoint)} 与 {@link GlyphSpec#worldPoint(GridPoint)}
+     * {@link #localToWorld(GridPoint, GridPoint)} 与 {@code GlyphSpec.worldPoint(GridPoint)}
      * 都委托到 {@link #combine(GridPoint, long, long)}，不要再在别处重写这套 switch。</p>
      *
      * @param localOffset 占位局部偏移，{@code (0,0)} 是锚点

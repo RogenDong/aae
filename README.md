@@ -46,6 +46,8 @@
 │       └── main/java/io/dev/demo # render、om
 └── src
     ├── main/java/io/dev/aae
+    │   ├── glyph                # 符文公开 API
+    │   └── track                # 轨道公开 API
     └── test/java/io/dev/aae
 ```
 

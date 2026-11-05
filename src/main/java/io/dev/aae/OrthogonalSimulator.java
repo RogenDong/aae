@@ -1,12 +1,16 @@
 package io.dev.aae;
 
+import io.dev.aae.glyph.GlyphExecutionException;
+import io.dev.aae.glyph.GlyphInstance;
+import io.dev.aae.glyph.GlyphPhase;
+import io.dev.aae.glyph.GlyphSpec;
+import io.dev.aae.track.TrackDirection;
+
 import java.io.Serial;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;

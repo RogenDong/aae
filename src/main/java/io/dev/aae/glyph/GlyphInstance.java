@@ -1,4 +1,6 @@
-package io.dev.aae;
+package io.dev.aae.glyph;
+
+import io.dev.aae.GridPoint;
 
 import java.util.Objects;
 

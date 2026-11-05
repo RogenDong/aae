@@ -1,5 +1,11 @@
 package io.dev.aae;
 
+import io.dev.aae.glyph.GlyphDefinition;
+import io.dev.aae.glyph.GlyphRegistry;
+import io.dev.aae.glyph.GlyphSpec;
+import io.dev.aae.track.TrackDirection;
+import io.dev.aae.track.TrackSpec;
+
 import java.util.*;
 
 /**

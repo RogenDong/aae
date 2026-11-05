@@ -1,5 +1,10 @@
 package io.dev.aae;
 
+import io.dev.aae.track.InvalidTrackOverlapException;
+import io.dev.aae.track.TrackBuilder;
+import io.dev.aae.track.TrackDirection;
+import io.dev.aae.track.TrackSpec;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;

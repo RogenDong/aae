@@ -1,4 +1,6 @@
-package io.dev.aae;
+package io.dev.aae.track;
+
+import io.dev.aae.GridPoint;
 
 import java.util.HashSet;
 import java.util.List;

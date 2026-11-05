@@ -1,5 +1,9 @@
 package io.dev.aae;
 
+import io.dev.aae.track.InvalidTrackOverlapException;
+import io.dev.aae.track.TrackDirection;
+import io.dev.aae.track.TrackSpec;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;

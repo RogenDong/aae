@@ -1,4 +1,7 @@
-package io.dev.aae;
+package io.dev.aae.glyph;
+
+import io.dev.aae.Direction;
+import io.dev.aae.GridPoint;
 
 /**
  * 传给 {@link GlyphBehavior#apply} 的执行上下文。

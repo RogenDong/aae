@@ -1,5 +1,8 @@
 package io.dev.aae;
 
+import io.dev.aae.glyph.GlyphPhase;
+import io.dev.aae.glyph.GlyphSpec;
+
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;

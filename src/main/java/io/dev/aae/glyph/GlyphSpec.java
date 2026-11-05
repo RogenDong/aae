@@ -1,4 +1,8 @@
-package io.dev.aae;
+package io.dev.aae.glyph;
+
+import io.dev.aae.Direction;
+import io.dev.aae.GridPoint;
+import io.dev.aae.MechanismSpec;
 
 import java.util.Objects;
 

@@ -1,5 +1,9 @@
 package io.dev.demo.render;
 
+import io.dev.aae.glyph.GlyphDefinition;
+import io.dev.aae.glyph.GlyphSpec;
+import io.dev.aae.track.TrackSpec;
+
 import io.dev.aae.*;
 import io.dev.demo.om.OMGlyphs;
 

@@ -1,4 +1,6 @@
-package io.dev.aae;
+package io.dev.aae.glyph;
+
+import io.dev.aae.OrthogonalSimulator;
 
 /**
  * 一个符文类型的行为。

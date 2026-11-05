@@ -1,4 +1,6 @@
-package io.dev.aae;
+package io.dev.aae.glyph;
+
+import io.dev.aae.OrthogonalSimulator;
 
 /**
  * 符文运行期非法操作时抛出的异常。

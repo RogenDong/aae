@@ -1,5 +1,9 @@
 package io.dev.demo;
 
+import io.dev.aae.glyph.GlyphRegistry;
+import io.dev.aae.glyph.GlyphSpec;
+import io.dev.aae.track.TrackBuilder;
+
 import io.dev.aae.*;
 import io.dev.demo.om.OMAtom;
 import io.dev.demo.om.OMBonds;

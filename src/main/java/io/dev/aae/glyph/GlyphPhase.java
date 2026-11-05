@@ -1,4 +1,4 @@
-package io.dev.aae;
+package io.dev.aae.glyph;
 
 /**
  * 一个周期内部的两个半周期。

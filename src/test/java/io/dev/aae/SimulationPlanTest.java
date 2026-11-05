@@ -1,5 +1,12 @@
 package io.dev.aae;
 
+import io.dev.aae.glyph.GlyphDefinition;
+import io.dev.aae.glyph.GlyphRegistry;
+import io.dev.aae.glyph.GlyphSpec;
+import io.dev.aae.track.InvalidTrackOverlapException;
+import io.dev.aae.track.TrackDirection;
+import io.dev.aae.track.TrackSpec;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
