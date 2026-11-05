@@ -371,7 +371,7 @@ public final class OrthogonalSimulator {
     }
 
     /**
-     * 返回棋盘上指定格点的稳定实体标识；没有原子时返回 {@code null}。
+     * 返回棋盘上指定格点的稳定实体标识；没有原子时返回 {@code 0L}。
      *
      * <p>渲染层用这个标识把原子与当前机构的持有集合关联起来。格点只是实体
      * 的瞬时位置，不能用来判断一个机构到底持有哪一个原子。</p>
@@ -911,52 +911,30 @@ public final class OrthogonalSimulator {
         List<OutputSpec> outputs = plan.outputs();
         for (int index = 0; index < outputs.size(); index++) {
             OutputSpec output = outputs.get(index);
-            Molecule molecule = MoleculeBfs.moleculeAt(board, output.anchor());
-            if (molecule.isEmpty() || molecule.size() != output.size()) {
+            if (!matchesOutput(output)) {
                 continue;
             }
-            if (!matchesOutput(output, molecule)) {
-                continue;
-            }
-            for (AtomPlacement placement : molecule.atoms()) {
+            for (AtomPlacement placement : output.atoms()) {
                 board.remove(placement.position());
                 long entity = entityAtPosition.remove(placement.position());
                 positionOfEntity.remove(entity);
+                grabCounts.remove(entity);
             }
             outputCounts[index]++;
         }
     }
 
-    private boolean matchesOutput(OutputSpec output, Molecule molecule) {
-        for (AtomPlacement placement : molecule.atoms()) {
-            long entity = entityAtPosition.get(placement.position());
-            if (grabCounts.getOrDefault(entity, 0) > 0) {
-                return false;
-            }
-            Atom template = output.atomAt(placement.position());
-            if (template == null || placement.atom().type() != template.type()) {
-                return false;
-            }
-            if (!sameRealBonds(placement.atom(), template)) {
+    private boolean matchesOutput(OutputSpec output) {
+        for (AtomPlacement placement : output.atoms()) {
+            long entity = entityAtPosition.getOrDefault(placement.position(), 0L);
+            Atom actual = board.get(placement.position());
+            if (entity == 0L || actual == null
+                    || grabCounts.getOrDefault(entity, 0) > 0
+                    || !actual.equals(placement.atom())) {
                 return false;
             }
         }
         return true;
-    }
-
-    /** 只比较长期键；临时键（{@link Atom#TEMPORARY_BOND}）不参与输出匹配。 */
-    private static boolean sameRealBonds(Atom actual, Atom template) {
-        for (Direction direction : Direction.values()) {
-            if (realCode(actual.bondType(direction)) != realCode(template.bondType(direction))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    /** 把键字节归一化成“长期键或 {@code 0}”，便于比较两个键是否等价。 */
-    private static byte realCode(byte bondCode) {
-        return Atom.isRealBond(bondCode) ? bondCode : 0;
     }
 
     // ---------- 事务 ----------

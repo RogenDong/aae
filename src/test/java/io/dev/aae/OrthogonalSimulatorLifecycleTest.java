@@ -11,6 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class OrthogonalSimulatorLifecycleTest {
@@ -32,9 +33,14 @@ class OrthogonalSimulatorLifecycleTest {
         assertEquals(1, simulator.grabsAt(new GridPoint(1, 0)));
         assertEquals(1, simulator.heldEntities(0).size());
         assertEquals(0, simulator.outputCount(0));
+        long inputEntity = simulator.entityAt(new GridPoint(0, 0));
         simulator.step();
         assertTrue(simulator.heldEntities(0).isEmpty());
         assertNull(simulator.atomAt(new GridPoint(1, 0)));
+        assertEquals(0L, simulator.entityAt(new GridPoint(1, 0)));
+        assertEquals(0, simulator.grabsAt(new GridPoint(1, 0)));
+        assertEquals(inputEntity, simulator.entityAt(new GridPoint(0, 0)));
+        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(0, 0)));
         assertEquals(1, simulator.outputCount(0));
         assertFalse(simulator.isComplete());
         simulator.run(5);
@@ -109,28 +115,120 @@ class OrthogonalSimulatorLifecycleTest {
 
         OrthogonalSimulator matching = pairSimulator(
                 List.of(eastBonded, westBonded), List.of(eastBonded, westBonded));
-        OrthogonalSimulator wrongType = pairSimulator(
-                List.of(eastBonded, mismatchedWest), List.of(eastBonded, westBonded));
-        OrthogonalSimulator missingBond = pairSimulator(
-                List.of(Atom.of(0), Atom.of(0x0101)),
-                List.of(eastBonded, westBonded));
-
-        matching.run(5);
-        wrongType.run(5);
-        missingBond.run(5);
+        matching.run(4);
+        assertEquals(0, matching.outputCount(0));
+        assertTrue(matching.grabsAt(new GridPoint(-2, 0)) > 0);
+        assertTrue(matching.grabsAt(new GridPoint(-1, 0)) > 0);
+        long outsideEntity = matching.entityAt(new GridPoint(0, 0));
+        matching.step();
 
         // 匹配分子在释放后消费；输入处保留补充生产的另一份模板。
         assertEquals(1, matching.outputCount(0));
         assertEquals(2, matching.boardSize());
         assertNull(matching.atomAt(new GridPoint(-2, 0)));
         assertNull(matching.atomAt(new GridPoint(-1, 0)));
-        assertEquals(0, wrongType.outputCount(0));
-        assertEquals(4, wrongType.boardSize());
-        assertEquals(mismatchedWest, wrongType.atomAt(new GridPoint(-1, 0)));
-        assertEquals(0, missingBond.outputCount(0));
-        assertEquals(4, missingBond.boardSize());
-        assertEquals(Atom.of(0), missingBond.atomAt(new GridPoint(-2, 0)));
-        assertEquals(Atom.of(0x0101), missingBond.atomAt(new GridPoint(-1, 0)));
+        assertEquals(0L, matching.entityAt(new GridPoint(-2, 0)));
+        assertEquals(0L, matching.entityAt(new GridPoint(-1, 0)));
+        assertEquals(outsideEntity, matching.entityAt(new GridPoint(0, 0)));
+        assertEquals(eastBonded, matching.atomAt(new GridPoint(0, 0)));
+
+        for (List<Atom> actual : List.of(
+                List.of(eastBonded, mismatchedWest),
+                List.of(Atom.of(0), Atom.of(0x0101)),
+                List.of(eastBonded, Atom.of(0x0101).withBond(Direction.WEST, (byte) 3)),
+                List.of(eastBonded, Atom.of(0x0101).withBond(Direction.NORTH, (byte) 2)),
+                List.of(eastBonded, westBonded.withBond(Direction.EAST, (byte) 2)),
+                List.of(eastBonded))) {
+            OrthogonalSimulator mismatch = pairSimulator(actual, List.of(eastBonded, westBonded));
+            mismatch.run(4);
+            assertFalse(mismatch.isHalted());
+            long westEntity = mismatch.entityAt(new GridPoint(-2, 0));
+            long eastEntity = mismatch.entityAt(new GridPoint(-1, 0));
+            mismatch.step();
+            assertFalse(mismatch.isHalted());
+            assertEquals(0, mismatch.outputCount(0));
+            assertEquals(westEntity, mismatch.entityAt(new GridPoint(-2, 0)));
+            assertEquals(eastEntity, mismatch.entityAt(new GridPoint(-1, 0)));
+            assertEquals(actual.get(0), mismatch.atomAt(new GridPoint(-2, 0)));
+            if (actual.size() == 2) {
+                assertEquals(actual.get(1), mismatch.atomAt(new GridPoint(-1, 0)));
+                assertEquals(4, mismatch.boardSize());
+            } else {
+                assertNull(mismatch.atomAt(new GridPoint(-1, 0)));
+                assertEquals(2, mismatch.boardSize());
+            }
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void outputRejectsTemporaryBondsAndMissingEntitiesBeforeRemovingAnyAtom()
+            throws ReflectiveOperationException {
+        GridPoint west = new GridPoint(-2, 0);
+        GridPoint east = new GridPoint(-1, 0);
+        Atom eastBonded = Atom.of(0).withBond(Direction.EAST, (byte) 2);
+        Atom westBonded = Atom.of(0x0101).withBond(Direction.WEST, (byte) 2);
+        OrthogonalSimulator simulator = pairSimulator(
+                List.of(eastBonded, westBonded.withType(0x0201)), List.of(eastBonded, westBonded));
+        simulator.run(5);
+        long westEntity = simulator.entityAt(west);
+        long eastEntity = simulator.entityAt(east);
+        long outsideEntity = simulator.entityAt(new GridPoint(0, 0));
+        assertTrue(westEntity > 0);
+        assertTrue(eastEntity > 0);
+        assertEquals(0, simulator.grabsAt(east));
+
+        // 节点：已释放但类型不符的双原子输出；导航顺序：搬运至输出，再直接调用消费阶段。
+        // 符文占位不能与输出相交，因此通过反射注入临时键/缺失索引；预期任一校验失败都保留整份模板。
+        var boardField = OrthogonalSimulator.class.getDeclaredField("board");
+        boardField.setAccessible(true);
+        AtomGrid board = (AtomGrid) boardField.get(simulator);
+        var entitiesField = OrthogonalSimulator.class.getDeclaredField("entityAtPosition");
+        entitiesField.setAccessible(true);
+        Map<GridPoint, Long> entities = (Map<GridPoint, Long>) entitiesField.get(simulator);
+        var positionsField = OrthogonalSimulator.class.getDeclaredField("positionOfEntity");
+        positionsField.setAccessible(true);
+        Map<Long, GridPoint> positions = (Map<Long, GridPoint>) positionsField.get(simulator);
+        var grabsField = OrthogonalSimulator.class.getDeclaredField("grabCounts");
+        grabsField.setAccessible(true);
+        Map<Long, Integer> grabs = (Map<Long, Integer>) grabsField.get(simulator);
+        var consume = OrthogonalSimulator.class.getDeclaredMethod("consumeOutputs");
+        consume.setAccessible(true);
+
+        for (Direction direction : Direction.values()) {
+            Atom temporary = westBonded.withBond(direction, Atom.TEMPORARY_BOND);
+            board.put(east, temporary);
+            consume.invoke(simulator);
+            assertEquals(0, simulator.outputCount(0));
+            assertEquals(eastBonded, simulator.atomAt(west));
+            assertEquals(temporary, simulator.atomAt(east));
+            assertEquals(westEntity, simulator.entityAt(west));
+            assertEquals(eastEntity, simulator.entityAt(east));
+        }
+
+        board.put(east, westBonded);
+        entities.remove(east);
+        consume.invoke(simulator);
+        assertEquals(0, simulator.outputCount(0));
+        assertEquals(eastBonded, simulator.atomAt(west));
+        assertEquals(westBonded, simulator.atomAt(east));
+        assertEquals(westEntity, simulator.entityAt(west));
+        assertEquals(west, positions.get(westEntity));
+        assertEquals(east, positions.get(eastEntity));
+
+        entities.put(east, eastEntity);
+        consume.invoke(simulator);
+        assertEquals(1, simulator.outputCount(0));
+        assertNull(simulator.atomAt(west));
+        assertNull(simulator.atomAt(east));
+        assertEquals(0L, simulator.entityAt(west));
+        assertEquals(0L, simulator.entityAt(east));
+        assertFalse(positions.containsKey(westEntity));
+        assertFalse(positions.containsKey(eastEntity));
+        assertFalse(grabs.containsKey(westEntity));
+        assertFalse(grabs.containsKey(eastEntity));
+        assertEquals(outsideEntity, simulator.entityAt(new GridPoint(0, 0)));
+        assertEquals(eastBonded, simulator.atomAt(new GridPoint(0, 0)));
     }
 
     @Test
@@ -176,9 +274,15 @@ class OrthogonalSimulatorLifecycleTest {
         String type = "test.lifecycle:output-rollback";
         RuntimeException failure = new IllegalStateException("after first-half consumption");
         OrthogonalSimulator[] observed = new OrthogonalSimulator[1];
+        GridPoint consumed = new GridPoint(6, 5);
+        long[] consumedEntity = new long[1];
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.single(type, context -> {
             if (context.cycle() == 4 && context.phase().isSecondHalf()) {
                 assertArrayEquals(new long[] {1, 1}, observed[0].outputCounts());
+                assertNull(observed[0].atomAt(consumed));
+                assertEquals(0L, observed[0].entityAt(consumed));
+                assertEquals(0, observed[0].grabsAt(consumed));
+                assertFalse(observed[0].heldEntities(1).contains(consumedEntity[0]));
                 throw failure;
             }
         }))) {
@@ -188,9 +292,21 @@ class OrthogonalSimulatorLifecycleTest {
             observed[0] = simulator;
             simulator.run(4);
             assertArrayEquals(new long[] {1, 0}, simulator.outputCounts());
+            List<GridPoint> positions = List.copyOf(simulator.atomPositions());
+            List<Atom> atoms = positions.stream().map(simulator::atomAt).toList();
+            List<Long> entities = positions.stream().map(simulator::entityAt).toList();
+            List<Integer> grabs = positions.stream().map(simulator::grabsAt).toList();
+            List<Long> held = simulator.heldEntities(1);
+            consumedEntity[0] = simulator.entityAt(consumed);
+            assertTrue(consumedEntity[0] > 0);
             assertSame(failure, assertThrows(RuntimeException.class, simulator::step));
             assertTrue(simulator.isHalted());
             assertArrayEquals(new long[] {1, 0}, simulator.outputCounts());
+            assertEquals(positions, List.copyOf(simulator.atomPositions()));
+            assertEquals(atoms, positions.stream().map(simulator::atomAt).toList());
+            assertEquals(entities, positions.stream().map(simulator::entityAt).toList());
+            assertEquals(grabs, positions.stream().map(simulator::grabsAt).toList());
+            assertEquals(held, simulator.heldEntities(1));
         }
     }
 
@@ -347,12 +463,16 @@ class OrthogonalSimulatorLifecycleTest {
     private static OrthogonalSimulator pairSimulator(
             List<Atom> inputAtoms, List<Atom> outputAtoms) {
         // 两步向西搬运，输出不与输入相交；两臂分别携带，缺键样本也能完整抵达输出。
+        List<AtomPlacement> inputs = new ArrayList<>();
+        for (int i = 0; i < inputAtoms.size(); i++) {
+            inputs.add(new AtomPlacement(new GridPoint(i, 0), inputAtoms.get(i)));
+        }
         SimulationPlan plan = new SimulationPlan(
                 List.of(mechanism(0, 1, Direction.NORTH, ".fggr"),
                         mechanism(1, -1, Direction.SOUTH, ".fggr")),
-                List.of(track(0, 1, -1, 1, -2, 1), track(1, -1, 0, -1, -1, -1)),
-                List.of(InputSpec.of(new AtomPlacement(new GridPoint(0, 0), inputAtoms.get(0)),
-                        new AtomPlacement(new GridPoint(1, 0), inputAtoms.get(1)))),
+                List.of(TrackBuilder.start(0, 1).west().west().noLoop(),
+                        TrackBuilder.start(1, -1).west().west().noLoop()),
+                List.of(new InputSpec(inputs)),
                 List.of(OutputSpec.of(new AtomPlacement(new GridPoint(-2, 0), outputAtoms.get(0)),
                         new AtomPlacement(new GridPoint(-1, 0), outputAtoms.get(1)))), 1);
         return new OrthogonalSimulator(plan);

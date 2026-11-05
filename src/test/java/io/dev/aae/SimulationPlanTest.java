@@ -1,7 +1,9 @@
 package io.dev.aae;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -94,6 +96,50 @@ class SimulationPlanTest {
                 IllegalArgumentException.class,
                 () -> InputSpec.of(new AtomPlacement(new GridPoint(0, 0), sampleAtom()),
                         new AtomPlacement(new GridPoint(0, 0), otherAtom())));
+
+        GridPoint west = new GridPoint(0, 0);
+        GridPoint east = new GridPoint(1, 0);
+        Atom eastBond = sampleAtom().withBond(Direction.EAST, (byte) 2);
+        Atom westBond = otherAtom().withBond(Direction.WEST, (byte) 2);
+        assertDoesNotThrow(() -> OutputSpec.single(west, sampleAtom()));
+        assertDoesNotThrow(() -> OutputSpec.single(
+                new GridPoint(Long.MAX_VALUE, Long.MIN_VALUE), sampleAtom()));
+        assertDoesNotThrow(() -> OutputSpec.of(
+                new AtomPlacement(east, westBond), new AtomPlacement(west, eastBond)));
+        assertThrows(IllegalArgumentException.class,
+                () -> OutputSpec.of(new AtomPlacement(west, sampleAtom()),
+                        new AtomPlacement(west, otherAtom())));
+        assertThrows(IllegalArgumentException.class,
+                () -> OutputSpec.of(new AtomPlacement(west, sampleAtom()),
+                        new AtomPlacement(east, otherAtom())));
+        for (Atom invalidEast : List.of(otherAtom(),
+                otherAtom().withBond(Direction.WEST, (byte) 3))) {
+            var failure = assertThrows(IllegalArgumentException.class,
+                    () -> OutputSpec.of(new AtomPlacement(west, eastBond),
+                            new AtomPlacement(east, invalidEast)));
+            assertTrue(failure.getMessage().contains(west.toString()));
+            assertTrue(failure.getMessage().contains("EAST"));
+            assertTrue(failure.getMessage().contains("not reciprocal"));
+        }
+        var external = assertThrows(IllegalArgumentException.class,
+                () -> OutputSpec.single(west, eastBond));
+        assertTrue(external.getMessage().contains("outside"));
+        var temporary = assertThrows(IllegalArgumentException.class,
+                () -> OutputSpec.single(west,
+                        sampleAtom().withBond(Direction.NORTH, Atom.TEMPORARY_BOND)));
+        assertTrue(temporary.getMessage().contains("temporary"));
+        assertTrue(temporary.getMessage().contains("NORTH"));
+        for (Direction direction : Direction.values()) {
+            GridPoint boundary = new GridPoint(
+                    direction == Direction.WEST ? Long.MIN_VALUE : Long.MAX_VALUE,
+                    direction == Direction.NORTH ? Long.MIN_VALUE : Long.MAX_VALUE);
+            var overflow = assertThrows(IllegalArgumentException.class,
+                    () -> OutputSpec.single(boundary,
+                            sampleAtom().withBond(direction, (byte) 2)));
+            assertTrue(overflow.getMessage().contains(boundary.toString()));
+            assertTrue(overflow.getMessage().contains(direction.name()));
+            assertTrue(overflow.getMessage().contains("overflows"));
+        }
     }
 
     private static MechanismSpec mechanism(long x, long y) {

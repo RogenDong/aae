@@ -77,8 +77,9 @@ class SimulationPlanLayoutTest {
     void detectsPartialIOAndGlyphOverlaps() {
         InputSpec input = InputSpec.of(new AtomPlacement(new GridPoint(-1, 0), ATOM),
                 new AtomPlacement(ORIGIN, ATOM));
-        OutputSpec output = OutputSpec.of(new AtomPlacement(new GridPoint(1, 0), ATOM),
-                new AtomPlacement(ORIGIN, ATOM));
+        OutputSpec output = OutputSpec.of(
+                new AtomPlacement(new GridPoint(1, 0), ATOM.withBond(Direction.WEST, (byte) 1)),
+                new AtomPlacement(ORIGIN, ATOM.withBond(Direction.EAST, (byte) 1)));
         assertThrows(IllegalArgumentException.class,
                 () -> new SimulationPlan(List.of(), List.of(input), List.of(output), 1));
         String type = typeId();

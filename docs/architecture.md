@@ -132,6 +132,11 @@
 时覆盖并写入互惠键。`unbond` 只拆除互惠长期键，并在两侧写入 `0xFF`；下一个整数周期
 开始清除临时键。带临时键或被抓取的原子不能被 `remove` 或输出消费。
 
+输出模板构造时校验所有键均为模板内部互惠的长期键，且全部原子组成单个连通分子；
+非法模板直接抛出 `IllegalArgumentException`。每个半周期的符文阶段之后，输出匹配按声明顺序
+遍历模板坐标，检查实体与原子存在、抓取计数为零，以及完整 `Atom` 值相等（含四方向键字节）。
+整份模板通过后才按模板坐标删除原子、双向实体索引和抓取计数，输出计数加一；消费阶段无需 BFS。
+
 方向键操作 `isBonded`、`bondedDirections`、`bond`、`unbond` 和 `wasJustUnbonded`
 只允许邻居也在当前符文 placeholder 内：形状外读取返回 `false` 或不报告该方向，写操作返回
 `SKIPPED`。`bondedDirections` 只报告形状内的长期键。`moleculeAt(index)` 仍返回从合法
