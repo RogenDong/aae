@@ -32,12 +32,13 @@ public final class OutputSpec extends IOSpec {
 
     private static void validateMolecule(Map<GridPoint, Atom> atomsAt) {
         AtomGrid grid = new AtomGrid();
+        Direction[] directions = Direction.values();
         for (var entry : atomsAt.entrySet()) {
             GridPoint position = entry.getKey();
             Atom atom = entry.getValue();
             grid.put(position, atom);
             byte[] bondTypes = atom.bondTypes();
-            for (Direction direction : Direction.values()) {
+            for (Direction direction : directions) {
                 byte bond = bondTypes[direction.ordinal()];
                 if (bond == 0) {
                     continue;

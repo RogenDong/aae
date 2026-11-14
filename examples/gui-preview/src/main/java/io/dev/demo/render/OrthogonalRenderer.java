@@ -420,6 +420,7 @@ public final class OrthogonalRenderer {
             g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, atom.alpha()));
         }
 
+        Direction[] directions = Direction.values();
         double px = originX + atom.x() * config.cellSize();
         double py = originY + atom.y() * config.cellSize();
         int cell = config.cellSize();
@@ -432,7 +433,7 @@ public final class OrthogonalRenderer {
         for (int d = 0; d < 4; d++) {
             byte bondCode = atom.bondCodes()[d];
             if (bondCode != 0) { // 存在化学键
-                Direction dir = Direction.values()[d];
+                Direction dir = directions[d];
                 double baseAngle = FloatArm.directionToAngle(dir);
                 double angle = baseAngle + atom.rotationAngle();
 

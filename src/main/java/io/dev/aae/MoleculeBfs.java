@@ -56,6 +56,7 @@ public final class MoleculeBfs {
         List<AtomPlacement> discovered = new ArrayList<>();
         Set<GridPoint> visited = new HashSet<>();
         Deque<AtomPlacement> frontier = new ArrayDeque<>();
+        Direction[] directions = Direction.values();
 
         visited.add(start);
         frontier.add(new AtomPlacement(start, startAtom));
@@ -64,7 +65,7 @@ public final class MoleculeBfs {
             AtomPlacement current = frontier.poll();
             discovered.add(current);
 
-            for (Direction direction : Direction.values()) {
+            for (Direction direction : directions) {
                 if (!bondFilter.test(current.atom().bondType(direction))) {
                     continue;
                 }
