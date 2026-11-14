@@ -1,4 +1,4 @@
-package io.dev.aae;
+package io.dev.aae.mech;
 
 import java.util.ArrayList;
 import java.util.List;

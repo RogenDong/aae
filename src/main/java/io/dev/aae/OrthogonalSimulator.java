@@ -1,5 +1,7 @@
 package io.dev.aae;
 
+import io.dev.aae.mech.*;
+
 import io.dev.aae.glyph.GlyphExecutionException;
 import io.dev.aae.glyph.GlyphInstance;
 import io.dev.aae.glyph.GlyphPhase;

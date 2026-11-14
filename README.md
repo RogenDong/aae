@@ -47,6 +47,7 @@
 └── src
     ├── main/java/io/dev/aae
     │   ├── glyph                # 符文公开 API
+    │   ├── mech                 # 机械臂和指令公开 API
     │   └── track                # 轨道公开 API
     └── test/java/io/dev/aae
 ```
@@ -96,11 +97,11 @@ SimulationPlan plan = SimulationPlan.withTracks(
     new MechanismSpec(
         new GridPoint(0, 0),
         Direction.EAST,
-        InstructionTape.looping("g")),
+        InstructionTape.parse("g", 0, InstructionTape.Playback.LOOPING)),
     new MechanismSpec(
         new GridPoint(2, 0),
         Direction.WEST,
-        InstructionTape.looping("t")));
+        InstructionTape.parse("t", 0, InstructionTape.Playback.LOOPING)));
 
 OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
 simulator.step();
@@ -136,7 +137,7 @@ MechanismSpec piston = new MechanismSpec(
         new GridPoint(0, 0),
         Direction.EAST,
         2,
-        InstructionTape.looping("fws"));
+        InstructionTape.parse("fws", 0, InstructionTape.Playback.LOOPING));
 ```
 
 `MechanismView.position()` 始终返回基座位置，`length()` 返回当前长度，
@@ -256,7 +257,7 @@ grid.bond(left, Direction.EAST, (byte) 3, (byte) 2);
 SimulationPlan plan = new SimulationPlan(
         List.of(new MechanismSpec(
                 new GridPoint(0, 1), Direction.NORTH,
-                InstructionTape.looping(".fgr"))),
+                InstructionTape.parse(".fgr", 0, InstructionTape.Playback.LOOPING))),
         List.of(new TrackSpec(List.of(
                 new GridPoint(0, 1),
                 new GridPoint(-1, 1)))),

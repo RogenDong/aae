@@ -1,5 +1,8 @@
 package io.dev.demo;
 
+import io.dev.aae.mech.InstructionTape;
+import io.dev.aae.mech.MechanismSpec;
+
 import io.dev.aae.glyph.GlyphRegistry;
 import io.dev.aae.glyph.GlyphSpec;
 import io.dev.aae.track.TrackBuilder;

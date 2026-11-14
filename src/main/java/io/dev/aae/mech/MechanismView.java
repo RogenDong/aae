@@ -1,4 +1,7 @@
-package io.dev.aae;
+package io.dev.aae.mech;
+
+import io.dev.aae.Direction;
+import io.dev.aae.GridPoint;
 
 import java.util.Objects;
 

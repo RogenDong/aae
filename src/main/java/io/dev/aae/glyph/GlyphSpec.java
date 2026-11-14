@@ -2,7 +2,7 @@ package io.dev.aae.glyph;
 
 import io.dev.aae.Direction;
 import io.dev.aae.GridPoint;
-import io.dev.aae.MechanismSpec;
+import io.dev.aae.mech.MechanismSpec;
 
 import java.util.Objects;
 

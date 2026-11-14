@@ -1,5 +1,8 @@
 package io.dev.aae;
 
+import io.dev.aae.mech.Instruction;
+import io.dev.aae.mech.InstructionTape;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 

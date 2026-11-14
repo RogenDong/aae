@@ -1,5 +1,8 @@
 package io.dev.aae;
 
+import io.dev.aae.mech.InstructionTape;
+import io.dev.aae.mech.MechanismSpec;
+
 import io.dev.aae.glyph.GlyphBoard;
 import io.dev.aae.glyph.GlyphDefinition;
 import io.dev.aae.glyph.GlyphExecutionException;

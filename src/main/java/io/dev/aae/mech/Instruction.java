@@ -1,4 +1,4 @@
-package io.dev.aae;
+package io.dev.aae.mech;
 
 /**
  * 机构指令带支持的指令。
