@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "io.dev"
-version = "0.2.0"
+version = "0.2.1"
 description = "A deterministic engine for automata-driven monolithic assembly."
 
 repositories {

@@ -8,6 +8,7 @@ import io.dev.aae.track.TrackSpec;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -73,13 +74,13 @@ class CoHoldingTest {
 
     @Test
     void duplicateBranchBaseRotationsAreAppliedOnlyOnce() {
-        // 两支关联同一实体时 a/d 仍是同一基座旋转约束；观察键向可识别重复转动。
+        // 连通双原子分子和远处旁观原子分别播种，排除补料后以键向识别重复施加的基座旋转。
         Atom top = ATOM.withBond(Direction.SOUTH, 2);
         Atom bottom = Atom.of(3).withBond(Direction.NORTH, 2);
-        OrthogonalSimulator simulator = simulator(
+        OrthogonalSimulator simulator = initialStateSimulator(
                 List.of(arm(-1, 0, Direction.EAST, 1, 0x11, "fda")), List.of(),
-                InputSpec.of(new AtomPlacement(ORIGIN, top), AtomPlacement.of(0, 1, bottom),
-                        AtomPlacement.of(10, 10, Atom.of(9))));
+                InputSpec.of(new AtomPlacement(ORIGIN, top), AtomPlacement.of(0, 1, bottom)),
+                InputSpec.single(new GridPoint(10, 10), Atom.of(9)));
         simulator.step();
         long entity = simulator.entityAt(ORIGIN);
         long otherEntity = simulator.entityAt(new GridPoint(0, 1));
@@ -102,16 +103,17 @@ class CoHoldingTest {
     @ParameterizedTest
     @ValueSource(strings = {"q", "e", "w", "s"})
     void incompatibleBranchCentersOrDisplacementsRollBackTheWholeCycle(String instruction) {
-        // 一个实体被两支接触时，自转中心或伸缩位移不同必须冲突；旁路机构也不得部分提交。
+        // 连通三原子分子与旁路单原子分别播种；分支中心或位移不兼容时，两机构都不得部分提交。
         Atom top = ATOM.withBond(Direction.SOUTH, 2);
         Atom bottom = Atom.of(3).withBond(Direction.NORTH, 2);
-        OrthogonalSimulator simulator = simulator(
+        OrthogonalSimulator simulator = initialStateSimulator(
                 List.of(arm(-2, 0, Direction.EAST, 2, 0x11, "f" + instruction),
                         arm(10, 10, Direction.EAST, 1, "fd")), List.of(),
                 InputSpec.of(new AtomPlacement(ORIGIN, top),
                         AtomPlacement.of(0, 1, Atom.of(4)
                                 .withBond(Direction.NORTH, 2).withBond(Direction.SOUTH, 2)),
-                        AtomPlacement.of(0, 2, bottom), AtomPlacement.of(11, 10, Atom.of(5))));
+                        AtomPlacement.of(0, 2, bottom)),
+                InputSpec.single(new GridPoint(11, 10), Atom.of(5)));
         simulator.step();
         List<MechanismView> before = simulator.mechanisms();
         List<Long> held = simulator.heldEntities(0);
@@ -312,6 +314,45 @@ class CoHoldingTest {
         assertEquals(before, simulator.mechanisms());
         assertEquals(ATOM, simulator.atomAt(ORIGIN));
         assertEquals(2, simulator.grabsAt(ORIGIN));
+    }
+
+    @SuppressWarnings("unchecked")
+    private static OrthogonalSimulator initialStateSimulator(
+            List<MechanismSpec> arms, List<TrackSpec> tracks, InputSpec... molecules) {
+        // 分子参数均通过生产校验；这里只播种一次性棋盘初态，不声明会自动补料的生产 I/O。
+        // 双向实体索引、后续编号和缓存一起同步，保持共持与冲突回滚的真实运行态语义。
+        new SimulationPlan(arms, tracks, List.of(molecules), List.of(), 1);
+        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(arms, tracks));
+        simulator.init();
+        try {
+            var boardField = OrthogonalSimulator.class.getDeclaredField("board");
+            boardField.setAccessible(true);
+            AtomGrid board = (AtomGrid) boardField.get(simulator);
+            var entitiesField = OrthogonalSimulator.class.getDeclaredField("entityAtPosition");
+            entitiesField.setAccessible(true);
+            Map<GridPoint, Long> entities = (Map<GridPoint, Long>) entitiesField.get(simulator);
+            var positionsField = OrthogonalSimulator.class.getDeclaredField("positionOfEntity");
+            positionsField.setAccessible(true);
+            Map<Long, GridPoint> positions = (Map<Long, GridPoint>) positionsField.get(simulator);
+            long nextId = 1;
+            for (InputSpec molecule : molecules) {
+                for (AtomPlacement placement : molecule.atoms()) {
+                    assertNull(board.get(placement.position()), "初态分子不得重叠");
+                    board.put(placement.position(), placement.atom());
+                    entities.put(placement.position(), nextId);
+                    positions.put(nextId++, placement.position());
+                }
+            }
+            var nextIdField = OrthogonalSimulator.class.getDeclaredField("nextEntityId");
+            nextIdField.setAccessible(true);
+            nextIdField.setLong(simulator, nextId);
+            var cacheField = OrthogonalSimulator.class.getDeclaredField("moleculeBfsCache");
+            cacheField.setAccessible(true);
+            ((Map<?, ?>) cacheField.get(simulator)).clear();
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError("无法建立共持测试初态", failure);
+        }
+        return simulator;
     }
 
     private static OrthogonalSimulator simulator(

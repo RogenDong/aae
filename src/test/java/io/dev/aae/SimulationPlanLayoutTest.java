@@ -65,6 +65,7 @@ class SimulationPlanLayoutTest {
     @ParameterizedTest
     @EnumSource(Direction.class)
     void checksRotatedNonAnchorCellsAndNonFirstTemplateAtoms(Direction direction) {
+        // 用合法的双原子分子，将冲突格放在模板第二项，确保布局检查遍历非首原子与旋转非锚点。
         String type = typeId();
         GridPoint anchor = new GridPoint(-7, -5);
         GridPoint offset = new GridPoint(2, 1);
@@ -72,8 +73,9 @@ class SimulationPlanLayoutTest {
         GridPoint collision = glyph.worldPoint(offset);
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.of(type,
                 List.of(ORIGIN, offset), context -> {}))) {
-            InputSpec input = InputSpec.of(AtomPlacement.of(50, 50, ATOM),
-                    new AtomPlacement(collision, ATOM));
+            InputSpec input = InputSpec.of(
+                    new AtomPlacement(collision.translate(Direction.WEST), ATOM.withBond(Direction.EAST, 1)),
+                    new AtomPlacement(collision, ATOM.withBond(Direction.WEST, 1)));
             var failure = assertThrows(IllegalArgumentException.class,
                     () -> new SimulationPlan(List.of(), List.of(), List.of(input), List.of(), List.of(glyph), 1));
             assertTrue(failure.getMessage().contains(collision.toString()));
@@ -85,8 +87,9 @@ class SimulationPlanLayoutTest {
 
     @Test
     void detectsPartialIOAndGlyphOverlaps() {
-        InputSpec input = InputSpec.of(AtomPlacement.of(-1, 0, ATOM),
-                new AtomPlacement(ORIGIN, ATOM));
+        // 输入与输出各自先满足分子校验，再验证仅部分格点重叠也会触发布局冲突。
+        InputSpec input = InputSpec.of(AtomPlacement.of(-1, 0, ATOM.withBond(Direction.EAST, 1)),
+                new AtomPlacement(ORIGIN, ATOM.withBond(Direction.WEST, 1)));
         OutputSpec output = OutputSpec.of(
                 AtomPlacement.of(1, 0, ATOM.withBond(Direction.WEST, 1)),
                 new AtomPlacement(ORIGIN, ATOM.withBond(Direction.EAST, 1)));
@@ -142,6 +145,7 @@ class SimulationPlanLayoutTest {
 
     @Test
     void usesActualSparseCellsRatherThanBoundingBoxesOrTrackSegments() {
+        // 用连通的 L 形分子包围未占用格；轨道转角、雕文锚点与输出均不能按包围盒误判重叠。
         String type = typeId();
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.of(type,
                 List.of(ORIGIN, new GridPoint(2, 2)), context -> {}))) {
@@ -149,8 +153,12 @@ class SimulationPlanLayoutTest {
                     List.of(),
                     List.of(TrackBuilder.start(-2, -2).eastSouth().noLoop()),
                     List.of(InputSpec.of(
-                            AtomPlacement.of(-2, -1, ATOM),
-                            AtomPlacement.of(1, 1, ATOM))),
+                            AtomPlacement.of(-2, -1, ATOM.withBond(Direction.SOUTH, 1)),
+                            AtomPlacement.of(-2, 0, ATOM.withBond(Direction.NORTH, 1).withBond(Direction.SOUTH, 1)),
+                            AtomPlacement.of(-2, 1, ATOM.withBond(Direction.NORTH, 1).withBond(Direction.EAST, 1)),
+                            AtomPlacement.of(-1, 1, ATOM.withBond(Direction.WEST, 1).withBond(Direction.EAST, 1)),
+                            AtomPlacement.of(0, 1, ATOM.withBond(Direction.WEST, 1).withBond(Direction.EAST, 1)),
+                            AtomPlacement.of(1, 1, ATOM.withBond(Direction.WEST, 1)))),
                     List.of(OutputSpec.single(new GridPoint(1, 0), ATOM)),
                     List.of(new GlyphSpec(type, ORIGIN)), 1));
             assertDoesNotThrow(() -> new OrthogonalSimulator(plan));

@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class MechanismMotionTest {
@@ -172,13 +173,10 @@ class MechanismMotionTest {
                 2,
                 new ArmCombination(0x11),
                 InstructionTape.once("fws"));
-        InputSpec input = InputSpec.of(
-                AtomPlacement.of(2, 0, sampleAtom()),
-                AtomPlacement.of(2, 2, blockerAtom()),
-                AtomPlacement.of(10, 10, Atom.of(9)));
-        OrthogonalSimulator simulator = new OrthogonalSimulator(
-                new SimulationPlan(List.of(piston), List.of(input), List.of(), 1));
-        simulator.init();
+        OrthogonalSimulator simulator = motionSimulator(List.of(piston), List.of(),
+                InputSpec.single(new GridPoint(2, 0), sampleAtom()),
+                InputSpec.single(new GridPoint(2, 2), blockerAtom()),
+                InputSpec.single(new GridPoint(10, 10), Atom.of(9)));
 
         simulator.step();
         assertTrue(simulator.mechanism(0).grabbing());
@@ -207,11 +205,10 @@ class MechanismMotionTest {
         // a/d 的共同旋转中心是基座，与 q/e 的逐分支抓点中心不同；往返旋转后应还原。
         MechanismSpec arm = new MechanismSpec(new GridPoint(0, 0), Direction.EAST, 2,
                 new ArmCombination(0x11), InstructionTape.once("fda"));
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(List.of(arm),
-                List.of(InputSpec.of(AtomPlacement.of(2, 0, sampleAtom()),
-                        AtomPlacement.of(2, 2, blockerAtom()), AtomPlacement.of(10, 10, Atom.of(9)))),
-                List.of(), 1));
-        simulator.init();
+        OrthogonalSimulator simulator = motionSimulator(List.of(arm), List.of(),
+                InputSpec.single(new GridPoint(2, 0), sampleAtom()),
+                InputSpec.single(new GridPoint(2, 2), blockerAtom()),
+                InputSpec.single(new GridPoint(10, 10), Atom.of(9)));
         simulator.run(2);
         assertFalse(simulator.isHalted());
         assertEquals(Direction.SOUTH, simulator.mechanism(0).direction());
@@ -231,11 +228,10 @@ class MechanismMotionTest {
         // 读接口只解释当前已提交态的下一条指令：不抓取、不推进，也不把 RELEASE 暴露为运动。
         MechanismSpec arm = new MechanismSpec(new GridPoint(0, 0), Direction.EAST, 1,
                 new ArmCombination(0x11), InstructionTape.once("f.wwer"));
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(List.of(arm),
-                List.of(InputSpec.of(AtomPlacement.of(1, 0, sampleAtom()),
-                        AtomPlacement.of(1, 1, blockerAtom()), AtomPlacement.of(10, 10, Atom.of(9)))),
-                List.of(), 1));
-        simulator.init();
+        OrthogonalSimulator simulator = motionSimulator(List.of(arm), List.of(),
+                InputSpec.single(new GridPoint(1, 0), sampleAtom()),
+                InputSpec.single(new GridPoint(1, 1), blockerAtom()),
+                InputSpec.single(new GridPoint(10, 10), Atom.of(9)));
         assertTrue(simulator.motionIntents(0).isEmpty());
         assertThrows(IndexOutOfBoundsException.class, () -> simulator.motionIntents(-1));
         assertThrows(IndexOutOfBoundsException.class, () -> simulator.motionIntents(1));
@@ -283,13 +279,9 @@ class MechanismMotionTest {
                 InstructionTape.once("fgg"));
         // (0,1) >> (1,1) >> (2,0)
         TrackSpec track = TrackBuilder.start(0, 1).east().eastNorth().noLoop();
-        InputSpec input = InputSpec.of(
-                AtomPlacement.of(0, 0, grabbed),
-                AtomPlacement.of(-1, 0, attached),
-                AtomPlacement.of(1, 0, Atom.of(9)));
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
-                List.of(arm), List.of(track), List.of(input), List.of(), 1));
-        simulator.init();
+        OrthogonalSimulator simulator = motionSimulator(List.of(arm), List.of(track),
+                InputSpec.of(AtomPlacement.of(0, 0, grabbed), AtomPlacement.of(-1, 0, attached)),
+                InputSpec.single(new GridPoint(1, 0), Atom.of(9)));
 
         simulator.run(2);
         assertEquals(new GridPoint(1, 1), simulator.mechanism(0).position());
@@ -319,14 +311,9 @@ class MechanismMotionTest {
         MechanismSpec arm = new MechanismSpec(
                 base, Direction.EAST, new ArmCombination(0x05), InstructionTape.once("fg"));
         TrackSpec track = new TrackSpec(base, new GridPoint(Long.MAX_VALUE, 0));
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
-                List.of(arm),
-                List.of(track),
-                List.of(InputSpec.of(new AtomPlacement(atomPosition, sampleAtom()),
-                        new AtomPlacement(otherPosition, blockerAtom()))),
-                List.of(),
-                1));
-        simulator.init();
+        OrthogonalSimulator simulator = motionSimulator(List.of(arm), List.of(track),
+                InputSpec.single(atomPosition, sampleAtom()),
+                InputSpec.single(otherPosition, blockerAtom()));
         simulator.step();
 
         assertThrows(ArithmeticException.class, simulator::step);
@@ -364,17 +351,15 @@ class MechanismMotionTest {
 
     @Test
     void blockedExtensionDoesNotCommitLengthOrMoleculeMotion() {
+        // 被抓原子和挡路原子是两个合法独立分子；目标占用应使长度与坐标一起回滚。
         MechanismSpec piston = new MechanismSpec(
                 new GridPoint(0, 0),
                 Direction.EAST,
                 1,
                 InstructionTape.once("fw"));
-        InputSpec input = InputSpec.of(
-                AtomPlacement.of(1, 0, sampleAtom()),
-                AtomPlacement.of(2, 0, blockerAtom()));
-        OrthogonalSimulator simulator = new OrthogonalSimulator(
-                new SimulationPlan(List.of(piston), List.of(input), List.of(), 1));
-        simulator.init();
+        OrthogonalSimulator simulator = motionSimulator(List.of(piston), List.of(),
+                InputSpec.single(new GridPoint(1, 0), sampleAtom()),
+                InputSpec.single(new GridPoint(2, 0), blockerAtom()));
         // 第一个周期只执行抓取，活塞长度保持不变。
         simulator.step();
         assertFalse(simulator.isHalted());
@@ -446,6 +431,7 @@ class MechanismMotionTest {
 
     @Test
     void pivotAfterExtensionUsesTheCurrentLength() {
+        // 一次性放置连通双原子分子，排除补料后验证自转使用伸长后的抓点而不是初始长度。
         Atom grabbed = sampleAtom().withBond(Direction.SOUTH, 2);
         Atom attached = blockerAtom().withBond(Direction.NORTH, 2);
         MechanismSpec piston = new MechanismSpec(
@@ -453,13 +439,9 @@ class MechanismMotionTest {
                 Direction.EAST,
                 1,
                 InstructionTape.once("fwe"));
-        InputSpec input = InputSpec.of(
-                AtomPlacement.of(1, 0, grabbed),
-                AtomPlacement.of(1, 1, attached),
-                AtomPlacement.of(10, 10, Atom.of(9)));
-        OrthogonalSimulator simulator = new OrthogonalSimulator(
-                new SimulationPlan(List.of(piston), List.of(input), List.of(), 1));
-        simulator.init();
+        OrthogonalSimulator simulator = motionSimulator(List.of(piston), List.of(),
+                InputSpec.of(AtomPlacement.of(1, 0, grabbed), AtomPlacement.of(1, 1, attached)),
+                InputSpec.single(new GridPoint(10, 10), Atom.of(9)));
 
         simulator.run(3);
 
@@ -489,7 +471,7 @@ class MechanismMotionTest {
     }
 
     private static OrthogonalSimulator pivotSimulator(char pivotInstruction) {
-        // 用两条不相连的双原子分子区分分支枢轴，并同时观察坐标和键方向旋转。
+        // 分别校验两条双原子分子后一次性播种，区分分支枢轴且不让补料掩盖坐标和键向旋转。
         Atom grabbed = sampleAtom().withBond(Direction.EAST, 2);
         Atom attached = blockerAtom().withBond(Direction.WEST, 2);
         MechanismSpec arm = new MechanismSpec(
@@ -498,33 +480,25 @@ class MechanismMotionTest {
                 2,
                 new ArmCombination(0x11),
                 InstructionTape.once("f" + pivotInstruction));
-        InputSpec input = InputSpec.of(
-                AtomPlacement.of(0, 0, grabbed),
-                AtomPlacement.of(1, 0, attached),
-                AtomPlacement.of(2, 0, grabbed),
-                AtomPlacement.of(3, 0, attached));
-        OrthogonalSimulator simulator = new OrthogonalSimulator(
-                new SimulationPlan(List.of(arm), List.of(input), List.of(), 1));
-        simulator.init();
+        OrthogonalSimulator simulator = motionSimulator(List.of(arm), List.of(),
+                InputSpec.of(AtomPlacement.of(0, 0, grabbed), AtomPlacement.of(1, 0, attached)),
+                InputSpec.of(AtomPlacement.of(2, 0, grabbed), AtomPlacement.of(3, 0, attached)));
         simulator.run(2);
         return simulator;
     }
 
     private static OrthogonalSimulator boundarySimulator(int length, char instruction) {
-        // 两支各持有一个分子，保留远处原子防止输入在移动后补料干扰边界断言。
+        // 两支各持有一个独立分子；一次性初态不声明生产器，长度边界指令应只产生静止约束。
         MechanismSpec piston = new MechanismSpec(
                 new GridPoint(0, 0),
                 Direction.EAST,
                 length,
                 new ArmCombination(0x11),
                 InstructionTape.once("f" + instruction));
-        InputSpec input = InputSpec.of(
-                AtomPlacement.of(length, 0, sampleAtom()),
-                AtomPlacement.of(length, length, blockerAtom()),
-                AtomPlacement.of(10, 10, Atom.of(9)));
-        OrthogonalSimulator simulator = new OrthogonalSimulator(
-                new SimulationPlan(List.of(piston), List.of(input), List.of(), 1));
-        simulator.init();
+        OrthogonalSimulator simulator = motionSimulator(List.of(piston), List.of(),
+                InputSpec.single(new GridPoint(length, 0), sampleAtom()),
+                InputSpec.single(new GridPoint(length, length), blockerAtom()),
+                InputSpec.single(new GridPoint(10, 10), Atom.of(9)));
         simulator.step();
         assertEquals(2, simulator.motionIntents(0).size());
         assertTrue(simulator.motionIntents(0).stream()
@@ -569,6 +543,45 @@ class MechanismMotionTest {
         assertEquals(length, mechanism.length());
         assertEquals(position, mechanism.position());
         assertEquals(direction, mechanism.direction());
+    }
+
+    @SuppressWarnings("unchecked")
+    private static OrthogonalSimulator motionSimulator(
+            List<MechanismSpec> arms, List<TrackSpec> tracks, InputSpec... molecules) {
+        // 每个参数仍经生产校验为合法单分子，但这里只描述一次性棋盘初态，不声明持续生产的 I/O。
+        // 同步棋盘、双向实体索引和编号，再清空分子缓存，避免补料干扰往返运动与空格断言。
+        new SimulationPlan(arms, tracks, List.of(molecules), List.of(), 1);
+        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(arms, tracks));
+        simulator.init();
+        try {
+            var boardField = OrthogonalSimulator.class.getDeclaredField("board");
+            boardField.setAccessible(true);
+            AtomGrid board = (AtomGrid) boardField.get(simulator);
+            var entitiesField = OrthogonalSimulator.class.getDeclaredField("entityAtPosition");
+            entitiesField.setAccessible(true);
+            Map<GridPoint, Long> entities = (Map<GridPoint, Long>) entitiesField.get(simulator);
+            var positionsField = OrthogonalSimulator.class.getDeclaredField("positionOfEntity");
+            positionsField.setAccessible(true);
+            Map<Long, GridPoint> positions = (Map<Long, GridPoint>) positionsField.get(simulator);
+            long nextId = 1;
+            for (InputSpec molecule : molecules) {
+                for (AtomPlacement placement : molecule.atoms()) {
+                    assertNull(board.get(placement.position()), "初态分子不得重叠");
+                    board.put(placement.position(), placement.atom());
+                    entities.put(placement.position(), nextId);
+                    positions.put(nextId++, placement.position());
+                }
+            }
+            var nextIdField = OrthogonalSimulator.class.getDeclaredField("nextEntityId");
+            nextIdField.setAccessible(true);
+            nextIdField.setLong(simulator, nextId);
+            var cacheField = OrthogonalSimulator.class.getDeclaredField("moleculeBfsCache");
+            cacheField.setAccessible(true);
+            ((Map<?, ?>) cacheField.get(simulator)).clear();
+        } catch (ReflectiveOperationException failure) {
+            throw new AssertionError("无法建立机械运动测试初态", failure);
+        }
+        return simulator;
     }
 
     private static OrthogonalSimulator simulator(MechanismSpec mechanism) {

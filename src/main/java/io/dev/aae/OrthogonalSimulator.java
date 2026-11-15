@@ -174,6 +174,9 @@ public final class OrthogonalSimulator {
         positionOfEntity.clear();
         grabCounts.clear();
         heldByMechanism.forEach(Set::clear);
+        Arrays.fill(grabbed, false);
+        Arrays.fill(nextGrabbed, false);
+        moleculeBfsCache.clear();
         Arrays.fill(outputCounts, 0);
         nextEntityId = 1;
         List<MechanismSpec> mechanisms = plan.mechanisms();
@@ -609,7 +612,7 @@ public final class OrthogonalSimulator {
      */
     public List<EntityIntent> motionIntents(int index) {
         Objects.checkIndex(index, mechanismCount());
-        return buildMotionIntents(index, plan.mechanisms().get(index).tape().instructionAt(cycle));
+        return List.copyOf(buildMotionIntents(index, plan.mechanisms().get(index).tape().instructionAt(cycle)));
     }
 
     /** 执行与预览共用的纯构建路径，连通变化只传播运动关联而不扩大持有集合。 */

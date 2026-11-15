@@ -3,7 +3,7 @@ plugins {
 }
 
 group = "io.dev.demo"
-version = "0.2.0"
+version = "0.2.1"
 description = "GUI preview example for the AAEngine."
 
 repositories {

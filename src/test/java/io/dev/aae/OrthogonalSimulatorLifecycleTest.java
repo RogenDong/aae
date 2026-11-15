@@ -120,7 +120,8 @@ class OrthogonalSimulatorLifecycleTest {
     // ---------- 输出匹配 ----------
 
     @Test
-    void outputConsumesOnlyAnExactTypeBondAndShapeMatch() {
+    void outputConsumesOnlyAnExactTypeBondAndShapeMatch() throws ReflectiveOperationException {
+        // 不合法键形状只注入运行时棋盘，不再作为 I/O 模板；输出仍须逐字节匹配且整份消费。
         Atom eastBonded = Atom.of(0).withBond(Direction.EAST, 2);
         Atom mismatchedWest = Atom.of(0x0201).withBond(Direction.WEST, 2);
         Atom westBonded = Atom.of(0x0101).withBond(Direction.WEST, 2);
@@ -151,8 +152,18 @@ class OrthogonalSimulatorLifecycleTest {
                 List.of(eastBonded, Atom.of(0x0101).withBond(Direction.NORTH, 2)),
                 List.of(eastBonded, westBonded.withBond(Direction.EAST, 2)),
                 List.of(eastBonded))) {
-            OrthogonalSimulator mismatch = pairSimulator(actual, List.of(eastBonded, westBonded));
+            List<Atom> transportAtoms = actual.size() == 2
+                    ? List.of(eastBonded, westBonded.withType(actual.get(1).type()))
+                    : List.of(Atom.of(actual.get(0).type()));
+            OrthogonalSimulator mismatch = pairSimulator(transportAtoms, List.of(eastBonded, westBonded));
             mismatch.run(4);
+            // 先搬运合法分子，再注入不互惠键、悬空键或缺键，隔离输出校验与输入合法性校验。
+            var boardField = OrthogonalSimulator.class.getDeclaredField("board");
+            boardField.setAccessible(true);
+            AtomGrid board = (AtomGrid) boardField.get(mismatch);
+            for (int i = 0; i < actual.size(); i++) {
+                board.put(new GridPoint(-2 + i, 0), actual.get(i));
+            }
             assertFalse(mismatch.isHalted());
             long westEntity = mismatch.entityAt(new GridPoint(-2, 0));
             long eastEntity = mismatch.entityAt(new GridPoint(-1, 0));
@@ -469,14 +480,13 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void nonEmptySharedGrabDoesNotSupplementAnotherArmAfterRotation() {
-        // 先抓正交点，再旋转到新朝向；机构已有持有实体时重复 f 必须跳过对角点，不能按分支补抓。
+        // 用两个合法单原子输入分别提供正交点与旋转后的对角点；重复 f 不能为已抓握机构补抓另一分支。
         ArmCombination combination = new ArmCombination(0x11);
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
                 List.of(new MechanismSpec(new GridPoint(0, 0), Direction.EAST, 1,
                         combination, InstructionTape.once("fdf"))),
-                List.of(InputSpec.of(
-                        AtomPlacement.of(1, 0, sampleAtom()),
-                        AtomPlacement.of(-1, 1, otherAtom()))), List.of(), 1));
+                List.of(InputSpec.single(new GridPoint(1, 0), sampleAtom()),
+                        InputSpec.single(new GridPoint(-1, 1), otherAtom())), List.of(), 1));
 
         simulator.init();
         simulator.step();
@@ -550,7 +560,7 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void haltStopsAllFurtherStepsAndResetRecovers() {
-        // 机构抓着 (1,0) 的原子沿轨道往东走，第二半周期撞上静止的 (2,0) 原子而停机。
+        // 机构抓着 (1,0) 的原子沿轨道撞上 (2,0) 而停机；reset 必须清空抓握状态并能复现同一停机。
         SimulationPlan plan = new SimulationPlan(
                 List.of(mechanism(1, 1, Direction.NORTH, ".fg")),
                 List.of(track(1, 1, 2, 1)),
@@ -580,6 +590,8 @@ class OrthogonalSimulatorLifecycleTest {
         assertEquals(0, simulator.cycle());
         assertTrue(simulator.warnings().isEmpty());
         assertEquals(0, simulator.boardSize());
+        assertFalse(simulator.mechanism(0).grabbing());
+        assertTrue(simulator.heldEntities(0).isEmpty());
 
         simulator.run(4);
         assertTrue(simulator.isHalted());
@@ -611,7 +623,7 @@ class OrthogonalSimulatorLifecycleTest {
 
     private static OrthogonalSimulator pairSimulator(
             List<Atom> inputAtoms, List<Atom> outputAtoms) {
-        // 两步向西搬运，输出不与输入相交；两臂分别携带，缺键样本也能完整抵达输出。
+        // 两步向西搬运调用方提供的合法模板；异常键由输出测试等搬运完成后注入，不绕过 I/O 校验。
         List<AtomPlacement> inputs = new ArrayList<>();
         for (int i = 0; i < inputAtoms.size(); i++) {
             inputs.add(AtomPlacement.of(i, 0, inputAtoms.get(i)));

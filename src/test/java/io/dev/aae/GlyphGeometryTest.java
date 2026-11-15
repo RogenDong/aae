@@ -25,6 +25,7 @@ class GlyphGeometryTest {
     })
     void rotatedGeometryIsSharedByPlaceholdersSlotsAndCallbacks(
             Direction direction, long inputX, long inputY, long outputX, long outputY) {
+        // 输入双原子通过互反键构成合法分子；输出占位原子另用单原子模板，不改变旋转与槽位语义。
         GridPoint anchor = new GridPoint(5, 7);
         GridPoint localInput = new GridPoint(2, 3);
         GridPoint localOutput = new GridPoint(-1, 2);
@@ -84,8 +85,8 @@ class GlyphGeometryTest {
             assertEquals(1, calls.get());
 
             GlyphRuntimeFixture occupiedOutput = new GlyphRuntimeFixture(
-                    List.of(InputSpec.of(source, neighbor,
-                            new AtomPlacement(worldOutput, Atom.of(4)))), List.of(spec));
+                    List.of(InputSpec.of(source, neighbor),
+                            InputSpec.single(worldOutput, Atom.of(4))), List.of(spec));
             occupiedOutput.step();
             assertEquals((byte) 4, occupiedOutput.atomAt(worldOutput).type());
             assertEquals(1, calls.get());

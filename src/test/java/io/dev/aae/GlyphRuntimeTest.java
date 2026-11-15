@@ -44,6 +44,7 @@ class GlyphRuntimeTest {
 
     @Test
     void transportedAtomsAreBondedOnAGlyphInAValidLayout() {
+        // 两个输入分别生产独立单原子，运输到符文后才首次成键。
         try (var handle = GlyphRegistry.global().register(OMGlyphs.BONDING)) {
             OrthogonalSimulator simulator = simulatorOf(
                     List.of(new MechanismSpec(new GridPoint(-2, 1), Direction.NORTH,
@@ -52,9 +53,8 @@ class GlyphRuntimeTest {
                                     InstructionTape.once("fggr"))),
                     List.of(TrackBuilder.start(-2, 1).east().east().noLoop(),
                             TrackBuilder.start(-1, -1).east().east().noLoop()),
-                    List.of(InputSpec.of(
-                            AtomPlacement.of(-2, 0, sampleAtom()),
-                            AtomPlacement.of(-1, 0, otherAtom()))),
+                    List.of(InputSpec.single(new GridPoint(-2, 0), sampleAtom()),
+                            InputSpec.single(new GridPoint(-1, 0), otherAtom())),
                     List.of(),
                     List.of(OMGlyphs.bondingSpec(0, 0, Direction.EAST)));
             simulator.init();
@@ -74,12 +74,13 @@ class GlyphRuntimeTest {
     @ParameterizedTest
     @EnumSource(Direction.class)
     void builtInBondingGlyphBondsTwoAdjacentAtoms(Direction direction) {
+        // 相邻不等于连通：以两个合法单原子模板布置初态，由成键符文连接它们。
         GridPoint anchor = ORIGIN;
         GridPoint neighbor = anchor.translate(direction);
         try (var handle = GlyphRegistry.global().register(OMGlyphs.BONDING)) {
             GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
-                    List.of(InputSpec.of(new AtomPlacement(anchor, sampleAtom()),
-                            new AtomPlacement(neighbor, otherAtom()))),
+                    List.of(InputSpec.single(anchor, sampleAtom()),
+                            InputSpec.single(neighbor, otherAtom())),
                     List.of(OMGlyphs.bondingSpec(0, 0, direction)));
 
             simulator.step();
@@ -452,7 +453,8 @@ class GlyphRuntimeTest {
 
     @Test
     void bondingAndUnbondingExpandAndSplitConnectedMolecules() {
-        // 单个符文连续建立两条边，验证 BFS 连通展开到整分子；再同时拆边，临时键期间各节点应断开。
+        // 三个合法单原子模板保持初态独立，单个符文连续建立两条边，验证 BFS 连通展开到整分子；
+        // 拆键对照则从合法的三原子连通模板开始，同时拆边后临时键不再维持连通。
         String bondingType = uniqueTypeId("chain-bonding");
         try (var bondHandle = GlyphRegistry.global().register(GlyphDefinition.of(
                 bondingType,
@@ -464,8 +466,9 @@ class GlyphRuntimeTest {
                     context.board().bond(1, Direction.EAST, OMBonds.NORMAL.code);
                 }))) {
             GlyphRuntimeFixture bonded = new GlyphRuntimeFixture(
-                    List.of(InputSpec.of(AtomPlacement.of(0, 0, sampleAtom()),
-                            AtomPlacement.of(1, 0, otherAtom()), AtomPlacement.of(2, 0, Atom.of(9)))),
+                    List.of(InputSpec.single(ORIGIN, sampleAtom()),
+                            InputSpec.single(new GridPoint(1, 0), otherAtom()),
+                            InputSpec.single(new GridPoint(2, 0), Atom.of(9))),
                     List.of(new GlyphSpec(bondingType, ORIGIN)));
             bonded.step();
             assertEquals(3, bonded.moleculeAt(ORIGIN).size());
@@ -508,7 +511,8 @@ class GlyphRuntimeTest {
     void glyphBusinessExceptionRollsBackTheWholeCycleAndIsRethrown() {
         // 符文在正交/对角分支伸长提交后抛异常，比较整份机构视图与分支位移意图，验证共享持有和运动关联均回滚。
         IllegalStateException failure = new IllegalStateException("boom");
-        Atom carried = Atom.of(0x8000).withBond(Direction.NORTH, 0x80);
+        // 两支臂独立运输单原子，输入模板不带悬空键；运行时延迟产物仍携带高位键以验证回滚。
+        Atom carried = Atom.of(0x8000);
         Atom queued = Atom.of(0).withBond(Direction.WEST, 0xFE);
         String glyphType = uniqueTypeId("throwing");
         List<Integer> order = new ArrayList<>();
@@ -544,8 +548,8 @@ class GlyphRuntimeTest {
                     List.of(new MechanismSpec(new GridPoint(-1, 1), Direction.NORTH, 1,
                             new ArmCombination(0x11), InstructionTape.once("fww"))),
                     List.of(),
-                    List.of(InputSpec.of(AtomPlacement.of(-1, 0, carried),
-                            AtomPlacement.of(0, 0, otherAtom()))),
+                    List.of(InputSpec.single(new GridPoint(-1, 0), carried),
+                            InputSpec.single(ORIGIN, otherAtom())),
                     List.of(),
                     glyphs(new GlyphSpec(glyphType, new GridPoint(5, 5)),
                             new GlyphSpec(glyphType, new GridPoint(10, 5))));
@@ -631,13 +635,13 @@ class GlyphRuntimeTest {
         withInput.init();
         assertEquals(first, withInput.entityAt(ORIGIN));
 
+        // 两支臂抓住的是独立单原子，分别声明合法模板，重置后保持原来的实体创建及抓取顺序。
         ArmCombination combination = new ArmCombination(0x11);
         OrthogonalSimulator holding = simulatorOf(
                 List.of(new MechanismSpec(ORIGIN, Direction.EAST, 1,
                         combination, InstructionTape.once("fdw"))),
-                List.of(InputSpec.of(
-                        AtomPlacement.of(1, 0, sampleAtom()),
-                        AtomPlacement.of(1, 1, otherAtom()))),
+                List.of(InputSpec.single(new GridPoint(1, 0), sampleAtom()),
+                        InputSpec.single(new GridPoint(1, 1), otherAtom())),
                 List.of(), List.of());
         holding.init();
         holding.step();
@@ -771,10 +775,10 @@ class GlyphRuntimeTest {
             assertEquals((byte) 2, board.atomAt(0).orElseThrow().type());
         }));
 
+        // 两处远离的输入各用合法单原子模板，视图共享只取决于半周期，不要求原子属于同一分子。
         GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
-                List.of(InputSpec.of(
-                        AtomPlacement.of(0, 0, Atom.of(1)),
-                        AtomPlacement.of(5, 4, Atom.of(2)))),
+                List.of(InputSpec.single(ORIGIN, Atom.of(1)),
+                        InputSpec.single(new GridPoint(5, 4), Atom.of(2))),
                 List.of(
                         new GlyphSpec(firstType, ORIGIN, Direction.NORTH),
                         new GlyphSpec(secondType, new GridPoint(4, 4), Direction.NORTH)));
