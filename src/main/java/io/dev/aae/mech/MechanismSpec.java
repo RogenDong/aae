@@ -10,7 +10,29 @@ public record MechanismSpec(
         GridPoint initialPosition,
         Direction initialDirection,
         int length,
+        ArmCombination combination,
         InstructionTape tape) {
+
+    /** 兼容原有显式长度单臂构造器。 */
+    public MechanismSpec(GridPoint position, Direction direction, int length, InstructionTape tape) {
+        this(position, direction, length, ArmCombination.DEFAULT, tape);
+    }
+
+    public MechanismSpec(GridPoint position, Direction direction,
+                         ArmCombination combination, InstructionTape tape) {
+        this(position, direction, MIN_LENGTH, combination, tape);
+    }
+
+    public MechanismSpec(GridPoint position, Direction direction, int length,
+                         ArmCombination combination, String tape) {
+        this(position, direction, length, combination,
+                InstructionTape.parse(tape, 0, InstructionTape.Playback.LOOPING));
+    }
+
+    public MechanismSpec(GridPoint position, Direction direction,
+                         ArmCombination combination, String tape) {
+        this(position, direction, MIN_LENGTH, combination, tape);
+    }
 
     public static final int MIN_LENGTH = 1;
     public static final int MAX_LENGTH = 3;
@@ -56,6 +78,7 @@ public record MechanismSpec(
         Objects.requireNonNull(initialPosition, "initialPosition");
         Objects.requireNonNull(initialDirection, "initialDirection");
         validateLength(length);
+        Objects.requireNonNull(combination, "combination");
         Objects.requireNonNull(tape, "tape");
     }
 

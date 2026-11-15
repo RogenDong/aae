@@ -1,5 +1,6 @@
 package io.dev.aae;
 
+import io.dev.aae.mech.ArmCombination;
 import io.dev.aae.mech.InstructionTape;
 import io.dev.aae.mech.MechanismSpec;
 
@@ -120,15 +121,22 @@ class SimulationPlanLayoutTest {
 
     @Test
     void allowsIOAndGlyphsUnderArmShaftsAndGrippers() {
+        // 正交、对角多臂的占用范围只用于抓取，不是布局冲突单元；布局仍只禁止机构基座重叠。
         String type = typeId();
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.of(type,
                 List.of(ORIGIN, new GridPoint(1, 0)), context -> {}))) {
-            var plan = assertDoesNotThrow(() -> new SimulationPlan(List.of(arm(ORIGIN, Direction.EAST, 3),
-                    arm(new GridPoint(0, 5), Direction.EAST, 3)), List.of(),
-                    List.of(InputSpec.single(new GridPoint(1, 0), ATOM)),
-                    List.of(OutputSpec.single(new GridPoint(3, 0), ATOM)),
-                    List.of(new GlyphSpec(type, new GridPoint(2, 5))), 1));
+            var plan = assertDoesNotThrow(() -> new SimulationPlan(List.of(
+                    multiArm(ORIGIN, Direction.EAST, 3),
+                    multiArm(new GridPoint(0, 5), Direction.EAST, 3)), List.of(),
+                    List.of(InputSpec.single(new GridPoint(1, 0), ATOM),
+                            InputSpec.single(new GridPoint(1, 1), ATOM)),
+                    List.of(OutputSpec.single(new GridPoint(3, 0), ATOM),
+                            OutputSpec.single(new GridPoint(3, 3), ATOM)),
+                    List.of(new GlyphSpec(type, new GridPoint(2, 5)),
+                            new GlyphSpec(type, new GridPoint(2, 7))), 1));
             assertDoesNotThrow(() -> new OrthogonalSimulator(plan));
+            assertThrows(IllegalArgumentException.class, () -> new SimulationPlan(plan.mechanisms(), List.of(),
+                    List.of(InputSpec.single(ORIGIN, ATOM)), plan.outputs(), plan.glyphs(), 1));
         }
     }
 
@@ -205,6 +213,12 @@ class SimulationPlanLayoutTest {
 
     private static MechanismSpec arm(GridPoint position, Direction direction, int length) {
         return new MechanismSpec(position, direction, length, InstructionTape.once("."));
+    }
+
+    private static MechanismSpec multiArm(GridPoint position, Direction direction, int length) {
+        // bit 0/1 为正交分支，bit 4 为对角分支；测试只验证这些分支不会扩大基座冲突判定。
+        return new MechanismSpec(position, direction, length,
+                new ArmCombination(0x13), InstructionTape.once("."));
     }
 
     private static String typeId() {

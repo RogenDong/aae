@@ -36,6 +36,107 @@ class CoHoldingTest {
         assertEquals(ORIGIN, simulator.mechanism(1).grabPosition());
     }
 
+    @Test
+    void multipleContactsCountOncePerMechanismAndReleaseIndependently() {
+        // 同一机构的两个接触点只贡献一次持有；另一机构独立贡献一次，逐个释放不得串改。
+        OrthogonalSimulator simulator = simulator(
+                List.of(arm(-1, 0, Direction.EAST, 1, 0x11, "frrr"),
+                        arm(0, 2, Direction.NORTH, 1, "f.rr")),
+                List.of(),
+                InputSpec.of(
+                        new AtomPlacement(ORIGIN, ATOM.withBond(Direction.SOUTH, 2)),
+                        AtomPlacement.of(0, 1, Atom.of(3).withBond(Direction.NORTH, 2)))
+        );
+        simulator.step();
+        long entity = simulator.entityAt(ORIGIN);
+        List<Long> expected = List.of(entity, simulator.entityAt(new GridPoint(0, 1)));
+        List<Long> held = simulator.heldEntities(0);
+        assertEquals(expected, held);
+        assertEquals(expected, simulator.heldEntities(1));
+        assertThrows(UnsupportedOperationException.class, held::clear);
+        assertEquals(2, simulator.grabsAt(ORIGIN));
+        assertEquals(2, simulator.grabsAt(new GridPoint(0, 1)));
+        assertTrue(simulator.motionIntents(0).isEmpty());
+        simulator.step();
+        assertEquals(expected, held);
+        assertTrue(simulator.heldEntities(0).isEmpty());
+        assertEquals(expected, simulator.heldEntities(1));
+        assertEquals(1, simulator.grabsAt(ORIGIN));
+        assertEquals(1, simulator.grabsAt(new GridPoint(0, 1)));
+        simulator.run(2);
+        assertFalse(simulator.isHalted());
+        assertTrue(simulator.heldEntities(1).isEmpty());
+        assertEquals(0, simulator.grabsAt(ORIGIN));
+        assertEquals(0, simulator.grabsAt(new GridPoint(0, 1)));
+        assertEquals(entity, simulator.entityAt(ORIGIN));
+    }
+
+    @Test
+    void duplicateBranchBaseRotationsAreAppliedOnlyOnce() {
+        // 两支关联同一实体时 a/d 仍是同一基座旋转约束；观察键向可识别重复转动。
+        Atom top = ATOM.withBond(Direction.SOUTH, 2);
+        Atom bottom = Atom.of(3).withBond(Direction.NORTH, 2);
+        OrthogonalSimulator simulator = simulator(
+                List.of(arm(-1, 0, Direction.EAST, 1, 0x11, "fda")), List.of(),
+                InputSpec.of(new AtomPlacement(ORIGIN, top), AtomPlacement.of(0, 1, bottom),
+                        AtomPlacement.of(10, 10, Atom.of(9))));
+        simulator.step();
+        long entity = simulator.entityAt(ORIGIN);
+        long otherEntity = simulator.entityAt(new GridPoint(0, 1));
+        assertEquals(List.of(entity, otherEntity), simulator.heldEntities(0));
+        List<EntityIntent> rotations = simulator.motionIntents(0);
+        assertEquals(List.of(EntityIntent.rotate(entity, 0, new GridPoint(-1, 0), 1),
+                EntityIntent.rotate(otherEntity, 0, new GridPoint(-1, 0), 1)), rotations);
+        simulator.step();
+        assertFalse(simulator.isHalted());
+        assertEquals(ATOM.withBond(Direction.WEST, 2), simulator.atomAt(new GridPoint(-1, 1)));
+        assertEquals(Atom.of(3).withBond(Direction.EAST, 2), simulator.atomAt(new GridPoint(-2, 1)));
+        assertEquals(1, simulator.grabsAt(new GridPoint(-1, 1)));
+        simulator.step();
+        assertFalse(simulator.isHalted());
+        assertEquals(top, simulator.atomAt(ORIGIN));
+        assertEquals(bottom, simulator.atomAt(new GridPoint(0, 1)));
+        assertEquals(entity, simulator.entityAt(ORIGIN));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"q", "e", "w", "s"})
+    void incompatibleBranchCentersOrDisplacementsRollBackTheWholeCycle(String instruction) {
+        // 一个实体被两支接触时，自转中心或伸缩位移不同必须冲突；旁路机构也不得部分提交。
+        Atom top = ATOM.withBond(Direction.SOUTH, 2);
+        Atom bottom = Atom.of(3).withBond(Direction.NORTH, 2);
+        OrthogonalSimulator simulator = simulator(
+                List.of(arm(-2, 0, Direction.EAST, 2, 0x11, "f" + instruction),
+                        arm(10, 10, Direction.EAST, 1, "fd")), List.of(),
+                InputSpec.of(new AtomPlacement(ORIGIN, top),
+                        AtomPlacement.of(0, 1, Atom.of(4)
+                                .withBond(Direction.NORTH, 2).withBond(Direction.SOUTH, 2)),
+                        AtomPlacement.of(0, 2, bottom), AtomPlacement.of(11, 10, Atom.of(5))));
+        simulator.step();
+        List<MechanismView> before = simulator.mechanisms();
+        List<Long> held = simulator.heldEntities(0);
+        long entity = simulator.entityAt(ORIGIN);
+        List<EntityIntent> intents = simulator.motionIntents(0);
+        assertEquals(6, intents.size());
+        List<EntityIntent> sameEntityIntents = intents.stream()
+                .filter(intent -> intent.entity() == entity).toList();
+        assertEquals(2, sameEntityIntents.size());
+        assertFalse(sameEntityIntents.get(0).compatibleWith(sameEntityIntents.get(1)));
+        simulator.step();
+        assertTrue(simulator.isHalted());
+        assertEquals(2, simulator.cycle());
+        assertTrue(simulator.warnings().get(0).contains("incompatible intents"));
+        assertEquals(before, simulator.mechanisms());
+        assertEquals(held, simulator.heldEntities(0));
+        assertEquals(top, simulator.atomAt(ORIGIN));
+        assertEquals(bottom, simulator.atomAt(new GridPoint(0, 2)));
+        assertEquals(Atom.of(5), simulator.atomAt(new GridPoint(11, 10)));
+        assertNull(simulator.atomAt(new GridPoint(10, 11)));
+        assertEquals(1, simulator.grabsAt(ORIGIN));
+        assertEquals(1, simulator.grabsAt(new GridPoint(0, 2)));
+        assertEquals(1, simulator.grabsAt(new GridPoint(11, 10)));
+    }
+
     @ParameterizedTest
     @CsvSource({"WAIT,.,1", "GRAB,f,1", "ENDPOINT,g,1", "OFF_TRACK,g,1",
             "MAXIMUM,w,3", "MINIMUM,s,1"})
@@ -135,10 +236,11 @@ class CoHoldingTest {
 
     @Test
     void identicalTranslationsMoveACoHeldMoleculeOnlyOnce() {
+        // 第一机构两支接触同一分子，第二机构再共持；重复同位移约束仍只能移动一次。
         Atom left = ATOM.withBond(Direction.EAST, 2);
         Atom right = Atom.of(3).withBond(Direction.WEST, 2);
         OrthogonalSimulator simulator = simulator(
-                List.of(arm(0, 1, Direction.NORTH, 1, "fg"),
+                List.of(arm(0, 1, Direction.NORTH, 1, 0x11, "fg"),
                         arm(1, -1, Direction.SOUTH, 1, "fg")),
                 List.of(
                         TrackBuilder.start(0, 1).west().noLoop(),
@@ -146,7 +248,12 @@ class CoHoldingTest {
                 InputSpec.of(new AtomPlacement(ORIGIN, left),
                         AtomPlacement.of(1, 0, right)));
 
-        simulator.run(2);
+        simulator.step();
+        assertEquals(List.of(simulator.entityAt(ORIGIN), simulator.entityAt(new GridPoint(1, 0))),
+                simulator.heldEntities(0));
+        assertEquals(2, simulator.grabsAt(ORIGIN));
+        assertEquals(2, simulator.motionIntents(0).size());
+        simulator.step();
 
         assertFalse(simulator.isHalted());
         assertEquals(new GridPoint(-1, 1), simulator.mechanism(0).position());
@@ -162,10 +269,12 @@ class CoHoldingTest {
     void identicalPivotsFromDistinctBasesRotateTheMoleculeOnlyOnce() {
         OrthogonalSimulator simulator = simulator(
                 List.of(arm(-1, 0, Direction.EAST, 1, "fe"),
-                        arm(0, 1, Direction.NORTH, 1, "fe")), List.of(),
-                InputSpec.of(new AtomPlacement(ORIGIN, ATOM.withBond(Direction.NORTH, 2)),
-                        AtomPlacement.of(0, -1,
-                                Atom.of(3).withBond(Direction.SOUTH, 2))));
+                        arm(0, 1, Direction.NORTH, 1, "fe")),
+                List.of(),
+                InputSpec.of(
+                        new AtomPlacement(ORIGIN, ATOM.withBond(Direction.NORTH, 2)),
+                        AtomPlacement.of(0, -1, Atom.of(3).withBond(Direction.SOUTH, 2)))
+        );
 
         simulator.run(2);
 
@@ -215,5 +324,12 @@ class CoHoldingTest {
 
     private static MechanismSpec arm(long x, long y, Direction direction, int length, String program) {
         return new MechanismSpec(new GridPoint(x, y), direction, length, InstructionTape.once(program));
+    }
+
+    private static MechanismSpec arm(
+            long x, long y, Direction direction, int length, int code, String program) {
+        // 显式组合编码只用于多分支场景，其余计划参数继续沿用现有单次指令带约定。
+        return new MechanismSpec(new GridPoint(x, y), direction, length,
+                new ArmCombination(code), InstructionTape.once(program));
     }
 }

@@ -1,7 +1,9 @@
 package io.dev.aae;
 
+import io.dev.aae.mech.ArmCombination;
 import io.dev.aae.mech.InstructionTape;
 import io.dev.aae.mech.MechanismSpec;
+import io.dev.aae.mech.MechanismView;
 
 import io.dev.aae.glyph.GlyphDefinition;
 import io.dev.aae.glyph.GlyphRegistry;
@@ -333,6 +335,7 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void grabbedMoleculesRotateAroundTheMechanismWithTheirBonds() {
+        // 正交与对角抓点命中同一分子的两个节点：整分子按首次命中顺序共享去重，旋转和统一释放均只处理一次。
         Atom eastBonded = Atom.of(0).withBond(Direction.EAST, 2);
         Atom westBonded = Atom.of(0xFFFF).withBond(Direction.WEST, 2);
         SimulationPlan plan = new SimulationPlan(
@@ -355,10 +358,44 @@ class OrthogonalSimulatorLifecycleTest {
         assertEquals((byte) 2, rotatedWater.bondType(Direction.NORTH));
         assertEquals(1, simulator.grabsAt(new GridPoint(1, 1)));
         assertEquals(1, simulator.grabsAt(new GridPoint(1, 2)));
+
+        OrthogonalSimulator multi = new OrthogonalSimulator(new SimulationPlan(
+                List.of(new MechanismSpec(new GridPoint(0, 0), Direction.EAST, 1,
+                        new ArmCombination(0x11), InstructionTape.once("fdr"))),
+                List.of(InputSpec.of(
+                        AtomPlacement.of(1, 0, sampleAtom().withBond(Direction.SOUTH, 2)),
+                        AtomPlacement.of(1, 1, otherAtom().withBond(Direction.NORTH, 2)))),
+                List.of(), 1));
+        multi.init();
+        long first = multi.entityAt(new GridPoint(1, 0));
+        long second = multi.entityAt(new GridPoint(1, 1));
+        multi.step();
+        List<Long> held = multi.heldEntities(0);
+        assertEquals(List.of(first, second), held);
+        assertThrows(UnsupportedOperationException.class, () -> held.clear());
+        assertEquals(1, multi.grabsAt(new GridPoint(1, 0)));
+        assertEquals(1, multi.grabsAt(new GridPoint(1, 1)));
+        List<EntityIntent> rotation = multi.motionIntents(0);
+        assertEquals(List.of(EntityIntent.rotate(first, 0, new GridPoint(0, 0), 1),
+                EntityIntent.rotate(second, 0, new GridPoint(0, 0), 1)), rotation);
+        assertThrows(UnsupportedOperationException.class, rotation::clear);
+        multi.step();
+        assertEquals(first, multi.entityAt(new GridPoint(0, 1)));
+        assertEquals(second, multi.entityAt(new GridPoint(-1, 1)));
+        assertTrue(multi.motionIntents(0).isEmpty());
+        multi.step();
+        assertTrue(multi.heldEntities(0).isEmpty());
+        assertFalse(multi.mechanism(0).grabbing());
+        assertEquals(0, multi.grabsAt(new GridPoint(0, 1)));
+        assertEquals(0, multi.grabsAt(new GridPoint(-1, 1)));
+        assertEquals(List.of(first, second), held);
+        assertEquals(List.of(EntityIntent.rotate(first, 0, new GridPoint(0, 0), 1),
+                EntityIntent.rotate(second, 0, new GridPoint(0, 0), 1)), rotation);
     }
 
     @Test
     void grabIsNoOpWhenAlreadyHoldingAndReleaseIsNoOpWhenHoldingNothing() {
+        // 重复抓取不累加共享计数，重复释放不产生负计数，并保留释放前的不可变持有快照。
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
                 List.of(new MechanismSpec(new GridPoint(1, 0), Direction.WEST,
                         InstructionTape.once("rffrr"))),
@@ -375,11 +412,112 @@ class OrthogonalSimulatorLifecycleTest {
         assertEquals(1, simulator.boardSize());
         assertEquals(1, simulator.grabsAt(new GridPoint(0, 0)));
         assertEquals(1, simulator.heldEntities(0).size());
+        List<Long> held = simulator.heldEntities(0);
         simulator.run(2);
+        assertEquals(1, held.size());
         assertFalse(simulator.isHalted());
         assertEquals(1, simulator.boardSize());
         assertEquals(0, simulator.grabsAt(new GridPoint(0, 0)));
         assertTrue(simulator.heldEntities(0).isEmpty());
+    }
+
+    @Test
+    void sharedGrabAndReleaseUsesOneOrderedEntitySetAndStableSnapshots() {
+        // 两个相对抓点同时命中同一实体：持有集合共享去重，但抓取计数按机构各加一次；释放也统一清零。
+        Atom atom = sampleAtom();
+        SimulationPlan plan = new SimulationPlan(
+                List.of(
+                        new MechanismSpec(new GridPoint(-1, 0), Direction.EAST, ArmCombination.DEFAULT,
+                                InstructionTape.once("fr")),
+                        new MechanismSpec(new GridPoint(1, 0), Direction.WEST, ArmCombination.DEFAULT,
+                                InstructionTape.once("fr"))),
+                List.of(InputSpec.single(new GridPoint(0, 0), atom)), List.of(), 1);
+        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
+        simulator.init();
+        simulator.step();
+        long entity = simulator.entityAt(new GridPoint(0, 0));
+        assertEquals(List.of(entity), simulator.heldEntities(0));
+        assertEquals(List.of(entity), simulator.heldEntities(1));
+        assertEquals(2, simulator.grabsAt(new GridPoint(0, 0)));
+        List<Long> snapshot = simulator.heldEntities(0);
+        assertThrows(UnsupportedOperationException.class, () -> snapshot.add(99L));
+
+        simulator.step();
+        assertTrue(simulator.heldEntities(0).isEmpty());
+        assertTrue(simulator.heldEntities(1).isEmpty());
+        assertEquals(0, simulator.grabsAt(new GridPoint(0, 0)));
+        assertEquals(List.of(entity), snapshot);
+    }
+
+    @Test
+    void partialMultiArmGrabStillReportsSharedGrabbingAndDoesNotRequireEveryPoint() {
+        // 多臂机构只有一个抓点命中原子时也进入 grabbing 状态，空抓点不产生虚拟实体或额外计数。
+        ArmCombination combination = new ArmCombination(0x03);
+        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
+                List.of(new MechanismSpec(new GridPoint(0, 0), Direction.EAST, 1,
+                        combination, InstructionTape.once("f."))),
+                List.of(InputSpec.single(new GridPoint(1, 0), sampleAtom())), List.of(), 1));
+
+        simulator.init();
+        simulator.step();
+        long entity = simulator.entityAt(new GridPoint(1, 0));
+        assertEquals(List.of(entity), simulator.heldEntities(0));
+        assertEquals(1, simulator.grabsAt(new GridPoint(1, 0)));
+        assertEquals(0, simulator.grabsAt(new GridPoint(0, 1)));
+        assertTrue(simulator.mechanism(0).grabbing());
+    }
+
+    @Test
+    void nonEmptySharedGrabDoesNotSupplementAnotherArmAfterRotation() {
+        // 先抓正交点，再旋转到新朝向；机构已有持有实体时重复 f 必须跳过对角点，不能按分支补抓。
+        ArmCombination combination = new ArmCombination(0x11);
+        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
+                List.of(new MechanismSpec(new GridPoint(0, 0), Direction.EAST, 1,
+                        combination, InstructionTape.once("fdf"))),
+                List.of(InputSpec.of(
+                        AtomPlacement.of(1, 0, sampleAtom()),
+                        AtomPlacement.of(-1, 1, otherAtom()))), List.of(), 1));
+
+        simulator.init();
+        simulator.step();
+        long entity = simulator.entityAt(new GridPoint(1, 0));
+        assertEquals(List.of(entity), simulator.heldEntities(0));
+        simulator.step();
+        assertEquals(entity, simulator.entityAt(new GridPoint(0, 1)));
+        simulator.step();
+        assertEquals(List.of(entity), simulator.heldEntities(0));
+        assertEquals(0, simulator.grabsAt(new GridPoint(-1, 1)));
+        assertEquals(1, simulator.grabsAt(new GridPoint(0, 1)));
+    }
+
+    @Test
+    void motionConflictRollsBackMultiArmStateAndMotionIntentSnapshot() {
+        // 两个机构共同抓住同一实体后给出不同旋转中心；冲突停机仍须恢复实体、计数、运动意图及多臂定义。
+        ArmCombination combination = new ArmCombination(0x11);
+        SimulationPlan plan = new SimulationPlan(
+                List.of(
+                        new MechanismSpec(new GridPoint(-1, 0), Direction.EAST, 1,
+                                combination, InstructionTape.once("fdd")),
+                        new MechanismSpec(new GridPoint(1, 0), Direction.WEST, 1,
+                                combination, InstructionTape.once("fdd"))),
+                List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())), List.of(), 1);
+        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
+        simulator.init();
+        simulator.step();
+        long entity = simulator.entityAt(new GridPoint(0, 0));
+        MechanismView viewBefore = simulator.mechanism(0);
+        List<EntityIntent> intentsBefore = simulator.motionIntents(0);
+        assertEquals(2, simulator.grabsAt(new GridPoint(0, 0)));
+
+        simulator.step();
+        assertTrue(simulator.isHalted());
+        assertEquals(entity, simulator.entityAt(new GridPoint(0, 0)));
+        assertEquals(2, simulator.grabsAt(new GridPoint(0, 0)));
+        assertEquals(viewBefore, simulator.mechanism(0));
+        assertEquals(viewBefore.combination(), simulator.mechanism(0).combination());
+        assertEquals(intentsBefore, simulator.motionIntents(0));
+        assertEquals(List.of(entity), simulator.heldEntities(0));
+        assertEquals(List.of(entity), simulator.heldEntities(1));
     }
 
     // ---------- 意图冲突与停机 ----------

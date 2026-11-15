@@ -1,5 +1,6 @@
 package io.dev.aae;
 
+import io.dev.aae.mech.ArmCombination;
 import io.dev.aae.mech.InstructionTape;
 import io.dev.aae.mech.MechanismSpec;
 
@@ -37,6 +38,7 @@ import org.junit.jupiter.params.provider.EnumSource;
  * 前置条件。
  */
 class GlyphRuntimeTest {
+    private static final GridPoint ORIGIN = new GridPoint(0, 0);
 
     private static final AtomicInteger UNIQUE = new AtomicInteger();
 
@@ -58,11 +60,11 @@ class GlyphRuntimeTest {
             simulator.init();
             simulator.run(3);
             assertFalse(simulator.isHalted());
-            assertEquals(OMBonds.NORMAL.code, simulator.atomAt(new GridPoint(0, 0)).bondType(Direction.EAST));
+            assertEquals(OMBonds.NORMAL.code, simulator.atomAt(ORIGIN).bondType(Direction.EAST));
             assertEquals(OMBonds.NORMAL.code, simulator.atomAt(new GridPoint(1, 0)).bondType(Direction.WEST));
-            assertEquals(2, simulator.moleculeAt(new GridPoint(0, 0)).size());
+            assertEquals(2, simulator.moleculeAt(ORIGIN).size());
             simulator.step();
-            assertEquals(0, simulator.grabsAt(new GridPoint(0, 0)));
+            assertEquals(0, simulator.grabsAt(ORIGIN));
             assertEquals(0, simulator.grabsAt(new GridPoint(1, 0)));
         }
     }
@@ -72,7 +74,7 @@ class GlyphRuntimeTest {
     @ParameterizedTest
     @EnumSource(Direction.class)
     void builtInBondingGlyphBondsTwoAdjacentAtoms(Direction direction) {
-        GridPoint anchor = new GridPoint(0, 0);
+        GridPoint anchor = ORIGIN;
         GridPoint neighbor = anchor.translate(direction);
         try (var handle = GlyphRegistry.global().register(OMGlyphs.BONDING)) {
             GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
@@ -100,7 +102,7 @@ class GlyphRuntimeTest {
     @ParameterizedTest
     @EnumSource(Direction.class)
     void builtInUnbondingGlyphClearsTheBondAndWritesTemporaryMarkers(Direction direction) {
-        GridPoint anchor = new GridPoint(0, 0);
+        GridPoint anchor = ORIGIN;
         GridPoint neighbor = anchor.translate(direction);
         try (var handle = GlyphRegistry.global().register(OMGlyphs.UNBONDING)) {
             GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
@@ -145,7 +147,7 @@ class GlyphRuntimeTest {
                     List.of(InputSpec.of(
                             AtomPlacement.of(0, 0, eastBonded()),
                             AtomPlacement.of(1, 0, westBonded()))),
-                    List.of(new GlyphSpec(removalType, new GridPoint(0, 0), Direction.EAST)));
+                    List.of(new GlyphSpec(removalType, ORIGIN, Direction.EAST)));
 
             simulator.step();
 
@@ -205,14 +207,14 @@ class GlyphRuntimeTest {
         }));
 
         GlyphRuntimeFixture simulator = new GlyphRuntimeFixture(
-                List.of(InputSpec.single(new GridPoint(0, 0), occupant)),
+                List.of(InputSpec.single(ORIGIN, occupant)),
                 glyphs(new GlyphSpec(spawnerType,
-                        new GridPoint(0, 0), Direction.NORTH)));
+                        ORIGIN, Direction.NORTH)));
 
         simulator.step();
 
         // 占用格保留原原子；两次调用都返回 SKIPPED。第二半周期结束后，未落盘产物不跨整数周期。
-        assertEquals(occupant, simulator.atomAt(new GridPoint(0, 0)));
+        assertEquals(occupant, simulator.atomAt(ORIGIN));
         assertEquals(0, simulator.pendingGlyphSpawnCount());
         assertEquals(List.of(TryResult.SKIPPED, TryResult.SKIPPED), results);
     }
@@ -224,7 +226,7 @@ class GlyphRuntimeTest {
         String producerType = uniqueTypeId("queued-spawn");
         GlyphRegistry.global().register(new GlyphDefinition<Void>(
                 producerType,
-                List.of(new GridPoint(0, 0)),
+                List.of(ORIGIN),
                 () -> null,
                 (context, state) -> {
                     if (context.cycle() == 0 && context.phase().isFirstHalf()) {
@@ -259,7 +261,7 @@ class GlyphRuntimeTest {
         String type = uniqueTypeId("reserved-transport");
         Atom product = Atom.of(9);
         try (var handle = GlyphRegistry.global().register(new GlyphDefinition<Integer>(
-                type, List.of(new GridPoint(0, 0)), () -> 0, (context, state) -> {
+                type, List.of(ORIGIN), () -> 0, (context, state) -> {
                     if (context.cycle() == 1 && context.phase().isFirstHalf()) {
                         context.board().queueSpawn(0, product);
                     }
@@ -269,19 +271,19 @@ class GlyphRuntimeTest {
                     List.of(new MechanismSpec(new GridPoint(0, 1), Direction.NORTH,
                             InstructionTape.once("fg"))),
                     List.of(track(0, 1, 1, 1)),
-                    List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())), List.of(),
+                    List.of(InputSpec.single(ORIGIN, sampleAtom())), List.of(),
                     List.of(new GlyphSpec(type, new GridPoint(1, 0))));
             simulator.init();
             simulator.step();
-            long held = simulator.entityAt(new GridPoint(0, 0));
+            long held = simulator.entityAt(ORIGIN);
             Object state = simulator.glyphState(0);
 
             assertThrows(GlyphExecutionException.class, simulator::step);
             assertTrue(simulator.isHalted());
             assertEquals(1, simulator.cycle());
             assertEquals(new GridPoint(0, 1), simulator.mechanism(0).position());
-            assertEquals(held, simulator.entityAt(new GridPoint(0, 0)));
-            assertEquals(1, simulator.grabsAt(new GridPoint(0, 0)));
+            assertEquals(held, simulator.entityAt(ORIGIN));
+            assertEquals(1, simulator.grabsAt(ORIGIN));
             assertNull(simulator.atomAt(new GridPoint(1, 0)));
             assertEquals(0, simulator.pendingGlyphSpawnCount());
             assertEquals(state, simulator.glyphState(0));
@@ -295,7 +297,7 @@ class GlyphRuntimeTest {
         String glyphType = uniqueTypeId("queue-then-spawn");
         GlyphRegistry.global().register(new GlyphDefinition<Void>(
                 glyphType,
-                List.of(new GridPoint(0, 0)),
+                List.of(ORIGIN),
                 () -> null,
                 (context, state) -> {
                     if (context.cycle() == 0 && context.phase().isFirstHalf()) {
@@ -322,7 +324,7 @@ class GlyphRuntimeTest {
         String glyphType = uniqueTypeId("checked-input");
         GlyphRegistry.global().register(GlyphDefinition.of(
                 glyphType,
-                List.of(new GridPoint(0, 0)),
+                List.of(ORIGIN),
                 // 声明的是锚点格，也就是符文锚点 (2,2) 本身。
                 List.of(GlyphDefinition.InputSlot.of(0, (byte) 5)),
                 List.of(),
@@ -350,7 +352,7 @@ class GlyphRuntimeTest {
         String occupiedType = uniqueTypeId("occupied-input");
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.of(
                 occupiedType,
-                List.of(new GridPoint(0, 0)),
+                List.of(ORIGIN),
                 List.of(GlyphDefinition.InputSlot.occupied(0)),
                 List.of(),
                 context -> calls.add("occupied")))) {
@@ -376,7 +378,7 @@ class GlyphRuntimeTest {
         String glyphType = uniqueTypeId("checked-output");
         GlyphRegistry.global().register(GlyphDefinition.of(
                 glyphType,
-                List.of(new GridPoint(0, 0), new GridPoint(1, 0)),
+                List.of(ORIGIN, new GridPoint(1, 0)),
                 List.of(),
                 List.of(GlyphDefinition.OutputSlot.of(1)),
                 context -> calls.add("called")));
@@ -392,17 +394,119 @@ class GlyphRuntimeTest {
 
         // 对照：输出格空闲时两个半周期各执行一次。
         GlyphRuntimeFixture free = new GlyphRuntimeFixture(
-                List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())),
+                List.of(InputSpec.single(ORIGIN, sampleAtom())),
                 glyphs(new GlyphSpec(glyphType,
                         new GridPoint(3, 3), Direction.EAST)));
         free.step();
         assertEquals(2, calls.size());
     }
 
+    @Test
+    void bondingAndUnbondingExpandMotionWithoutAddingSharedGrabCounts() {
+        // 符文把未抓住的 C 成键到 A 后，C 随当前连通分子运动但不新增抓取计数；拆键后 C 留在原地。
+        String type = uniqueTypeId("motion-connectivity");
+        try (var handle = GlyphRegistry.global().register(GlyphDefinition.of(type,
+                List.of(ORIGIN, new GridPoint(0, 1), new GridPoint(1, 0),
+                        new GridPoint(2, 0), new GridPoint(1, 2)), context -> {
+                    if (!context.phase().isFirstHalf()) return;
+                    if (context.cycle() == 0) {
+                        context.board().spawn(0, sampleAtom());
+                        context.board().spawn(1, otherAtom());
+                        context.board().spawn(2, Atom.of(9));
+                    } else if (context.cycle() == 2) {
+                        assertEquals(TryResult.APPLIED,
+                                context.board().bond(0, Direction.EAST, OMBonds.NORMAL.code));
+                    } else if (context.cycle() == 3) {
+                        assertEquals(TryResult.APPLIED, context.board().unbond(2, Direction.EAST));
+                    }
+                }))) {
+            OrthogonalSimulator simulator = simulatorOf(
+                    List.of(new MechanismSpec(ORIGIN, Direction.EAST, 1,
+                            new ArmCombination(0x11), InstructionTape.once(".fwgr"))),
+                    List.of(track(0, 0, 0, 1)), List.of(), List.of(),
+                    List.of(new GlyphSpec(type, new GridPoint(1, 0))));
+            simulator.step();
+            long first = simulator.entityAt(new GridPoint(1, 0));
+            long second = simulator.entityAt(new GridPoint(1, 1));
+            long connected = simulator.entityAt(new GridPoint(2, 0));
+            simulator.step();
+            assertEquals(List.of(first, second), simulator.heldEntities(0));
+            simulator.step();
+            assertFalse(simulator.isHalted());
+            assertEquals(connected, simulator.entityAt(new GridPoint(3, 0)));
+            assertEquals(0, simulator.grabsAt(new GridPoint(3, 0)));
+            assertEquals(1, simulator.grabsAt(new GridPoint(2, 0)));
+            assertEquals(1, simulator.grabsAt(new GridPoint(2, 2)));
+            assertEquals(List.of(first, second), simulator.heldEntities(0));
+            assertEquals(2, simulator.moleculeAt(new GridPoint(2, 0)).size());
+            simulator.step();
+            assertFalse(simulator.isHalted());
+            assertEquals(first, simulator.entityAt(new GridPoint(2, 1)));
+            assertEquals(second, simulator.entityAt(new GridPoint(2, 3)));
+            assertEquals(connected, simulator.entityAt(new GridPoint(3, 0)));
+            assertEquals(0, simulator.grabsAt(new GridPoint(3, 0)));
+            simulator.step();
+            assertTrue(simulator.heldEntities(0).isEmpty());
+        }
+    }
+
+    @Test
+    void bondingAndUnbondingExpandAndSplitConnectedMolecules() {
+        // 单个符文连续建立两条边，验证 BFS 连通展开到整分子；再同时拆边，临时键期间各节点应断开。
+        String bondingType = uniqueTypeId("chain-bonding");
+        try (var bondHandle = GlyphRegistry.global().register(GlyphDefinition.of(
+                bondingType,
+                List.of(ORIGIN, new GridPoint(1, 0), new GridPoint(2, 0)),
+                List.of(GlyphDefinition.InputSlot.occupied(0),
+                        GlyphDefinition.InputSlot.occupied(1), GlyphDefinition.InputSlot.occupied(2)),
+                List.of(), context -> {
+                    context.board().bond(0, Direction.EAST, OMBonds.NORMAL.code);
+                    context.board().bond(1, Direction.EAST, OMBonds.NORMAL.code);
+                }))) {
+            GlyphRuntimeFixture bonded = new GlyphRuntimeFixture(
+                    List.of(InputSpec.of(AtomPlacement.of(0, 0, sampleAtom()),
+                            AtomPlacement.of(1, 0, otherAtom()), AtomPlacement.of(2, 0, Atom.of(9)))),
+                    List.of(new GlyphSpec(bondingType, ORIGIN)));
+            bonded.step();
+            assertEquals(3, bonded.moleculeAt(ORIGIN).size());
+            assertEquals(OMBonds.NORMAL.code,
+                    bonded.atomAt(ORIGIN).bondType(Direction.EAST));
+            assertEquals(OMBonds.NORMAL.code,
+                    bonded.atomAt(new GridPoint(1, 0)).bondType(Direction.EAST));
+        }
+
+        String unbondingType = uniqueTypeId("chain-unbonding");
+        try (var unbondHandle = GlyphRegistry.global().register(GlyphDefinition.of(
+                unbondingType,
+                List.of(ORIGIN, new GridPoint(1, 0), new GridPoint(2, 0)),
+                List.of(GlyphDefinition.InputSlot.occupied(0),
+                        GlyphDefinition.InputSlot.occupied(1), GlyphDefinition.InputSlot.occupied(2)),
+                List.of(), context -> {
+                    context.board().unbond(0, Direction.EAST);
+                    context.board().unbond(1, Direction.EAST);
+                }))) {
+            GlyphRuntimeFixture split = new GlyphRuntimeFixture(
+                    List.of(InputSpec.of(
+                            AtomPlacement.of(0, 0, eastBonded()),
+                            AtomPlacement.of(1, 0, westBonded().withBond(Direction.EAST, OMBonds.NORMAL.code)),
+                            AtomPlacement.of(2, 0, Atom.of(9).withBond(Direction.WEST, OMBonds.NORMAL.code)))),
+                    List.of(new GlyphSpec(unbondingType, ORIGIN)));
+            split.step();
+            assertEquals(1, split.moleculeAt(ORIGIN).size());
+            assertEquals(Atom.TEMPORARY_BOND,
+                    split.atomAt(ORIGIN).bondType(Direction.EAST));
+            split.step();
+            assertEquals(1, split.moleculeAt(ORIGIN).size());
+            assertEquals(0, split.atomAt(ORIGIN).bondType(Direction.EAST));
+            assertEquals(0, split.atomAt(new GridPoint(1, 0)).bondType(Direction.EAST));
+        }
+    }
+
     // ---------- 回滚与重置 ----------
 
     @Test
     void glyphBusinessExceptionRollsBackTheWholeCycleAndIsRethrown() {
+        // 符文在正交/对角分支伸长提交后抛异常，比较整份机构视图与分支位移意图，验证共享持有和运动关联均回滚。
         IllegalStateException failure = new IllegalStateException("boom");
         Atom carried = Atom.of(0x8000).withBond(Direction.NORTH, 0x80);
         Atom queued = Atom.of(0).withBond(Direction.WEST, 0xFE);
@@ -411,7 +515,7 @@ class GlyphRuntimeTest {
         OrthogonalSimulator[] observed = new OrthogonalSimulator[1];
         try (var handle = GlyphRegistry.global().register(new GlyphDefinition<Integer>(
                 glyphType,
-                List.of(new GridPoint(0, 0), new GridPoint(1, 0)),
+                List.of(ORIGIN, new GridPoint(1, 0)),
                 () -> 0,
                 (context, state) -> {
                     int index = context.glyphIndex();
@@ -424,9 +528,12 @@ class GlyphRuntimeTest {
                         } else {
                             // 抛异常前确认机构已运动，第一半周期状态与延迟产物也已经提交。
                             assertEquals(3, state);
-                            assertEquals(new GridPoint(0, 1), observed[0].mechanism(0).position());
+                            assertEquals(new GridPoint(-1, 1), observed[0].mechanism(0).position());
+                            assertEquals(Direction.NORTH, observed[0].mechanism(0).direction());
+                            assertEquals(2, observed[0].mechanism(0).length());
                             assertEquals(queued, observed[0].atomAt(new GridPoint(6, 5)));
-                            assertEquals(carried, observed[0].atomAt(new GridPoint(0, 0)));
+                            assertEquals(carried, observed[0].atomAt(new GridPoint(-1, -1)));
+                            assertEquals(otherAtom(), observed[0].atomAt(new GridPoint(1, -1)));
                             throw failure;
                         }
                     }
@@ -434,10 +541,11 @@ class GlyphRuntimeTest {
                 }))) {
 
             OrthogonalSimulator simulator = simulatorOf(
-                    List.of(new MechanismSpec(new GridPoint(-1, 1), Direction.NORTH,
-                            InstructionTape.once("fg"))),
-                    List.of(track(-1, 1, 0, 1)),
-                    List.of(InputSpec.single(new GridPoint(-1, 0), carried)),
+                    List.of(new MechanismSpec(new GridPoint(-1, 1), Direction.NORTH, 1,
+                            new ArmCombination(0x11), InstructionTape.once("fww"))),
+                    List.of(),
+                    List.of(InputSpec.of(AtomPlacement.of(-1, 0, carried),
+                            AtomPlacement.of(0, 0, otherAtom()))),
                     List.of(),
                     glyphs(new GlyphSpec(glyphType, new GridPoint(5, 5)),
                             new GlyphSpec(glyphType, new GridPoint(10, 5))));
@@ -446,11 +554,15 @@ class GlyphRuntimeTest {
 
             simulator.step();
             assertEquals(1, simulator.cycle());
-            assertEquals(1, simulator.boardSize());
+            assertEquals(2, simulator.boardSize());
             long entity = simulator.entityAt(new GridPoint(-1, 0));
+            long diagonalEntity = simulator.entityAt(ORIGIN);
             assertEquals(List.of(0, 1, 0, 1), order);
             assertEquals(2, simulator.glyphState(0));
             assertEquals(4, simulator.glyphState(1));
+            var mechanismBefore = simulator.mechanism(0);
+            List<Long> heldBefore = simulator.heldEntities(0);
+            List<EntityIntent> motionBefore = simulator.motionIntents(0);
 
             IllegalStateException thrown = assertThrows(IllegalStateException.class, simulator::step);
             assertSame(failure, thrown);
@@ -460,25 +572,31 @@ class GlyphRuntimeTest {
             // 周期开始时的状态被完整还原。
             assertEquals(carried, simulator.atomAt(new GridPoint(-1, 0)));
             assertEquals(entity, simulator.entityAt(new GridPoint(-1, 0)));
-            assertEquals(List.of(entity), simulator.heldEntities(0));
+            assertEquals(List.of(entity, diagonalEntity), simulator.heldEntities(0));
+            assertEquals(heldBefore, simulator.heldEntities(0));
+            assertEquals(motionBefore, simulator.motionIntents(0));
+            assertEquals(mechanismBefore, simulator.mechanism(0));
             assertEquals(1, simulator.grabsAt(new GridPoint(-1, 0)));
             assertEquals(new GridPoint(-1, 1), simulator.mechanism(0).position());
             assertEquals(2, simulator.glyphState(0));
             assertEquals(4, simulator.glyphState(1));
             assertEquals(0, simulator.pendingGlyphSpawnCount());
-            assertNull(simulator.atomAt(new GridPoint(0, 0)));
+            assertEquals(otherAtom(), simulator.atomAt(ORIGIN));
+            assertEquals(diagonalEntity, simulator.entityAt(ORIGIN));
+            assertEquals(1, simulator.grabsAt(ORIGIN));
             assertNull(simulator.atomAt(new GridPoint(5, 5)));
             assertNull(simulator.atomAt(new GridPoint(6, 5)));
-            assertEquals(1, simulator.boardSize());
+            assertEquals(2, simulator.boardSize());
         }
     }
 
     @Test
     void resetRebuildsGlyphStateAndRestartsEntityIds() {
+        // 重置不仅重建符文状态与实体编号，也要丢弃多臂共享持有/运动关联；旧快照仍保持原值。
         String glyphType = uniqueTypeId("stateful");
         GlyphRegistry.global().register(new GlyphDefinition<Integer>(
                 glyphType,
-                List.of(new GridPoint(0, 0)),
+                List.of(ORIGIN),
                 () -> null,
                 (context, state) -> (state == null ? 0 : state) + context.glyphIndex() + 1));
 
@@ -502,16 +620,48 @@ class GlyphRuntimeTest {
         // 重置后第一次输入生产仍然从 1 号实体开始。
         OrthogonalSimulator withInput = simulatorOf(
                 List.of(),
-                List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())),
+                List.of(InputSpec.single(ORIGIN, sampleAtom())),
                 List.of(),
                 List.of());
         withInput.init();
-        long first = withInput.entityAt(new GridPoint(0, 0));
+        long first = withInput.entityAt(ORIGIN);
         assertEquals(1L, first);
         withInput.reset();
-        assertEquals(0, withInput.entityAt(new GridPoint(0, 0)));
+        assertEquals(0, withInput.entityAt(ORIGIN));
         withInput.init();
-        assertEquals(first, withInput.entityAt(new GridPoint(0, 0)));
+        assertEquals(first, withInput.entityAt(ORIGIN));
+
+        ArmCombination combination = new ArmCombination(0x11);
+        OrthogonalSimulator holding = simulatorOf(
+                List.of(new MechanismSpec(ORIGIN, Direction.EAST, 1,
+                        combination, InstructionTape.once("fdw"))),
+                List.of(InputSpec.of(
+                        AtomPlacement.of(1, 0, sampleAtom()),
+                        AtomPlacement.of(1, 1, otherAtom()))),
+                List.of(), List.of());
+        holding.init();
+        holding.step();
+        List<Long> held = holding.heldEntities(0);
+        List<EntityIntent> motion = holding.motionIntents(0);
+        holding.run(2);
+        assertEquals(Direction.SOUTH, holding.mechanism(0).direction());
+        assertEquals(2, holding.mechanism(0).length());
+        holding.reset();
+        assertTrue(holding.heldEntities(0).isEmpty());
+        assertTrue(holding.motionIntents(0).isEmpty());
+        assertFalse(holding.mechanism(0).grabbing());
+        assertEquals(Direction.EAST, holding.mechanism(0).direction());
+        assertEquals(1, holding.mechanism(0).length());
+        assertEquals(combination, holding.mechanism(0).combination());
+        assertEquals(0, holding.boardSize());
+        assertEquals(2, held.size());
+        assertEquals(2, motion.size());
+        holding.init();
+        assertEquals(held, List.of(holding.entityAt(new GridPoint(1, 0)),
+                holding.entityAt(new GridPoint(1, 1))));
+        holding.step();
+        assertEquals(held, holding.heldEntities(0));
+        assertEquals(motion, holding.motionIntents(0));
     }
 
     @Test
@@ -520,7 +670,7 @@ class GlyphRuntimeTest {
         AtomicBoolean blocked = new AtomicBoolean(true);
         List<Integer> order = new ArrayList<>();
         try (var handle = GlyphRegistry.global().register(new GlyphDefinition<>(type,
-                List.of(new GridPoint(0, 0)), List.of(),
+                List.of(ORIGIN), List.of(),
                 List.of(GlyphDefinition.OutputSlot.freeWhen(0, reader -> !blocked.get())),
                 () -> 0, (context, state) -> {
                     order.add(context.glyphIndex());
@@ -531,7 +681,7 @@ class GlyphRuntimeTest {
             try (var observer = GlyphRegistry.global().register(GlyphDefinition.single(observerType,
                     context -> blocked.set(false)))) {
                 var simulator = simulatorOf(List.of(), List.of(), List.of(), List.of(
-                        new GlyphSpec(type, new GridPoint(0, 0)),
+                        new GlyphSpec(type, ORIGIN),
                         new GlyphSpec(observerType, new GridPoint(1, 0)),
                         new GlyphSpec(type, new GridPoint(2, 0))));
                 simulator.step();
@@ -577,7 +727,7 @@ class GlyphRuntimeTest {
         OrthogonalSimulator simulator = simulatorOf(
                 List.of(), List.of(), List.of(),
                 List.of(
-                        new GlyphSpec(secondType, new GridPoint(0, 0), Direction.NORTH),
+                        new GlyphSpec(secondType, ORIGIN, Direction.NORTH),
                         new GlyphSpec(firstType, new GridPoint(2, 0), Direction.NORTH)));
 
         simulator.step();
@@ -590,7 +740,7 @@ class GlyphRuntimeTest {
         GlyphBoard[] captured = new GlyphBoard[1];
         String firstType = uniqueTypeId("view-first");
         GlyphRegistry.global().register(GlyphDefinition.of(firstType,
-                List.of(new GridPoint(0, 0), new GridPoint(1, 0)),
+                List.of(ORIGIN, new GridPoint(1, 0)),
                 List.of(GlyphDefinition.InputSlot.of(0, (byte) 1)),
                 List.of(GlyphDefinition.OutputSlot.freeWhen(1,
                         reader -> reader.atomAt(0).orElseThrow().type() == 1)), context -> {
@@ -606,7 +756,7 @@ class GlyphRuntimeTest {
         }));
         String secondType = uniqueTypeId("view-second");
         GlyphRegistry.global().register(GlyphDefinition.of(secondType,
-                List.of(new GridPoint(0, 1), new GridPoint(0, 0)),
+                List.of(new GridPoint(0, 1), ORIGIN),
                 List.of(GlyphDefinition.InputSlot.of(0, (byte) 2)),
                 List.of(GlyphDefinition.OutputSlot.freeWhen(1,
                         reader -> reader.atomAt(0).orElseThrow().type() == 2)), context -> {
@@ -626,7 +776,7 @@ class GlyphRuntimeTest {
                         AtomPlacement.of(0, 0, Atom.of(1)),
                         AtomPlacement.of(5, 4, Atom.of(2)))),
                 List.of(
-                        new GlyphSpec(firstType, new GridPoint(0, 0), Direction.NORTH),
+                        new GlyphSpec(firstType, ORIGIN, Direction.NORTH),
                         new GlyphSpec(secondType, new GridPoint(4, 4), Direction.NORTH)));
 
         simulator.step();

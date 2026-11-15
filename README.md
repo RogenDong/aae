@@ -17,7 +17,7 @@
 - 机构没有 ID，按 `SimulationPlan.mechanisms()` 的声明顺序定位，API 下标从 `0` 开始且在运行、回滚和重置期间保持稳定；下标只适用于当前计划。GUI 按相同顺序显示从 `1` 开始的编号。
 - 符文、输入、输出分别按 `SimulationPlan.glyphs()`、`inputs()`、`outputs()` 的声明顺序使用从 `0` 开始的下标，下标在运行、回滚和重置期间稳定且只适用于当前计划。符文 `typeId` 继续标识注册类型。
 - `glyphState(int glyphIndex)` 查询符文状态，回调通过 `GlyphContext.glyphIndex()` 获取自身下标；此下标与棋盘 API 的局部占位下标各自独立。`outputCount(int outputIndex)` 查询单个输出计数，`outputCounts()` 返回按输出声明顺序排列的 `long[]` 独立快照；下标查询越界抛出 `IndexOutOfBoundsException`。
-- `mechanism(index)` 和 `mechanisms()` 提供机构的只读状态值，包含基座位置、朝向、长度和抓取状态；`heldEntities(index)` 返回指定机构当前持有的实体。单机构查询下标越界时抛出 `IndexOutOfBoundsException`。
+- `mechanism(index)` 和 `mechanisms()` 提供机构的只读状态值，包含基座位置、基准朝向、长度、组合编码和机构级抓取状态；`heldEntities(index)` 返回该机构当前持有实体的有序、去重、不可变快照。单机构查询下标越界时抛出 `IndexOutOfBoundsException`。
 - 原子类型是有效范围为 `0..0xFFFF` 的 `int`，类型 `0` 也有效；化学键类型仍为 `byte`。编码由调用方定义，项目只比较数值、不认识类型名称；键字节 `0` 表示无键、`0xFF` 表示本周期临时键。`Atom` 是不可变 record，四方向键独立打包在 `bondCodes` 中。
 - `AtomGrid` 是 `GridPoint -> Atom` 的稀疏映射，成键时两端互惠写入；单侧键不构成连通。
 - `MoleculeBfs` 用显式队列做广度优先搜索，返回不可变的 `Molecule`；搜索过程不改动网格，也不使用递归。
@@ -26,7 +26,8 @@
 - 共持实体的机构即使本周期不运动也会提交 `STAY` 约束；一个持有者保持不动、另一个试图移动时会停机，避免分子脱离静止机构的抓握点。
 - 同一实体收到不兼容意图、或两个原子落入同一格时，模拟器停机、记录警告并保持冲突周期之前的状态；`reset()` 才能恢复。
 - 输入足迹被任何原子或延迟产物预留占用时该半周期不生产；输出匹配要求分子大小、原子类型与长期键完全一致，且没有任何原子被机构持有。
-- 抓取携带当前抓握点上的整个分子；被携带实体可随机构平移、绕基座或抓握点旋转、随活塞伸缩，并同步旋转键位；释放只减少持有计数，实体留在原地。
+- `f` 收集全部启用分支抓点上的完整分子，按实体去重后登记机构共享持有；同一机构每实体只计一次，不同机构共持则分别计数。`r` 统一释放，每实体减一次，实体留在原地。机构已有持有实体时重复 `f` 整体为空操作，不给空分支补抓；空抓不建立自动抓取状态。
+- 分支仅通过运动关联提供枢轴中心及伸缩方向，没有逐臂抓握状态或独立持有关系。轨道移动与 `a/d` 作用于整个共享集合；`q/e` 使用各关联分支的实际抓点，`w/s` 使用该分支的世界单位偏移。相同运动只执行一次，不同枢轴或不同伸缩位移不兼容，警告停机并回滚整个周期；成键后继续按现有连通分子展开运动。
 - 核心库没有第三方运行时依赖；JUnit 仅用于测试。
 
 完整的 `omsim` 对照分析、取舍和扩展边界见 [docs/architecture.md](docs/architecture.md)。
@@ -124,7 +125,7 @@ simulator.step();
 | `d` | 绕机构基座顺时针旋转 90 度 |
 | `w` | 活塞伸展一格，最大长度为 3 |
 | `s` | 活塞收缩一格，最小长度为 1 |
-| `f` | 抓取当前抓握点上的整个分子 |
+| `f` | 抓取全部启用分支抓点上的分子，登记为机构共享持有 |
 | `r` | 释放当前持有的全部实体 |
 | `.` | 等待一个周期 |
 
@@ -140,8 +141,48 @@ MechanismSpec piston = new MechanismSpec(
         InstructionTape.parse("fws", 0, InstructionTape.Playback.LOOPING));
 ```
 
-`MechanismView.position()` 始终返回基座位置，`length()` 返回当前长度，
-`grabPosition()` 返回 `position + direction * length` 对应的当前抓握点。
+### 组合臂与共享抓握
+
+`ArmCombination` 是不可变八位组合值，`new ArmCombination(code)` 严格接受 `1..255`
+（`0x01..0xFF`，共 255 种组合）；`0`、负数或大于 255 的 int 均无效，不会截断。
+`ArmCombination.fromByte((byte) 0x80)` 显式转换 Java 有符号 byte，结果编码为 128。
+旧构造器保持单臂 `0x01`；`armCount()` 返回启用分支数，`enabledBits()` 按 bit 下标升序遍历。
+
+| 位 | 相对基准朝向的角度 | 单位局部偏移 |
+|---|---|---|
+| bit0 | 0° | `(1,0)` |
+| bit1 | 90° | `(0,1)` |
+| bit2 | 180° | `(-1,0)` |
+| bit3 | 270° | `(0,-1)` |
+| bit4 | 45° | `(1,1)` |
+| bit5 | 135° | `(-1,1)` |
+| bit6 | 225° | `(-1,-1)` |
+| bit7 | 315° | `(1,-1)` |
+
+```java
+MechanismSpec multiArm = new MechanismSpec(
+        new GridPoint(0, 0), Direction.EAST, 2,
+        new ArmCombination(0x11), InstructionTape.once("fdr"));
+// 初始抓点为 (2,0)、(2,2)；两个分支共享长度、基座、朝向、指令带与抓放状态。
+MechanismView view = new OrthogonalSimulator(
+        SimulationPlan.withTracks(List.of(), multiArm)).mechanism(0);
+List<GridPoint> all = view.grabPositions();
+GridPoint diagonal = view.grabPosition(4); // 固定 bit 下标，不是遍历序号
+```
+
+`MechanismView.position()` 始终返回基座，`length()` 返回共享长度，`combination()` 返回组合。
+`grabPositions()` 返回启用位升序的不可变抓点列表；`grabPosition(bitIndex)` 只接受启用位
+（越界抛 `IndexOutOfBoundsException`，未启用位抛 `IllegalArgumentException`）。
+无参 `grabPosition()` 对任意单比特组合返回实际抓点，多臂时抛 `IllegalStateException`。
+编码相对基准朝向定义，`a/d` 只改变朝向、不改编码，仍每次旋转 90°。
+对角分支长度 n 表示两个坐标轴各偏移 n，绘制杆长为 `sqrt(2) * n`；
+不扩展四方向键，不新增臂杆、抓手或旋转扫掠碰撞。
+
+所有分支的 `grabbing()` 一致，由机构共享持有集合决定；部分抓点为空也不拆分状态。
+运动关联随共享抓取建立、统一释放/reset 清除，并与实体和抓握计数一起参与周期回滚。
+`motionIntents(index)` 返回当前指令基于已提交状态推导的不可变实体运动约束快照
+（`STAY`/`MOVE`/`ROTATE`，释放时为空），供动画等只读调用方归并兼容运动；
+它不推进周期、不公开逐臂持有，也不承诺整个周期一定成功。
 
 ## 轨道
 

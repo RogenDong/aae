@@ -9,14 +9,7 @@ import io.dev.aae.glyph.GlyphSpec;
 import io.dev.aae.track.TrackDirection;
 
 import java.io.Serial;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -67,6 +60,8 @@ public final class OrthogonalSimulator {
     private final byte[] direction;
     /** 机械臂的长度 */
     private final byte[] length;
+    /** 机械臂抓取状态 */
+    private final boolean[] grabbed;
 
     /** 下周期机械臂坐标 x */
     private final long[] nextX;
@@ -76,6 +71,8 @@ public final class OrthogonalSimulator {
     private final byte[] nextDirection;
     /** 下周期机械臂长度 */
     private final byte[] nextLength;
+    /** 下周期机械臂抓取状态 */
+    private final boolean[] nextGrabbed;
     /** 待执行的指令 */
     private final Instruction[] pendingInstructions;
     private final long[] pendingTrackDeltaX;
@@ -86,7 +83,10 @@ public final class OrthogonalSimulator {
     private final Map<GridPoint, Long> entityAtPosition = new LinkedHashMap<>();
     private final Map<Long, GridPoint> positionOfEntity = new LinkedHashMap<>();
     private final Map<Long, Integer> grabCounts = new LinkedHashMap<>();
-    private final List<List<Long>> heldByMechanism;
+    /** 机构级共享持有集合：同一实体只计一次抓取，顺序由首次命中决定。 */
+    private final List<Set<Long>> heldByMechanism;
+    /** 分子 BFS 搜索缓存 */
+    private final Map<GridPoint, Molecule> moleculeBfsCache = new HashMap<>();
     private final long[] outputCounts;
 
     /** 符文运行态：实例状态、执行上下文与半周期棋盘视图都由它持有。 */
@@ -106,16 +106,18 @@ public final class OrthogonalSimulator {
         this.y = new long[size];
         this.direction = new byte[size];
         this.length = new byte[size];
+        this.grabbed = new boolean[size];
         this.nextX = new long[size];
         this.nextY = new long[size];
         this.nextDirection = new byte[size];
         this.nextLength = new byte[size];
+        this.nextGrabbed = new boolean[size];
         this.pendingInstructions = new Instruction[size];
         this.pendingTrackDeltaX = new long[size];
         this.pendingTrackDeltaY = new long[size];
         this.heldByMechanism = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
-            this.heldByMechanism.add(new ArrayList<>(8));
+            this.heldByMechanism.add(new LinkedHashSet<>(8));
         }
         this.outputCounts = new long[plan.outputs().size()];
         this.glyphs = new GlyphRuntime(
@@ -132,7 +134,7 @@ public final class OrthogonalSimulator {
     /** 全部机构当前持有的实体并集，供符文棋盘视图判断“被抓取”。 */
     private Set<Long> heldEntityIds() {
         return heldByMechanism.stream()
-                .flatMap(List::stream)
+                .flatMap(Set::stream)
                 .collect(Collectors.toUnmodifiableSet());
     }
 
@@ -171,7 +173,7 @@ public final class OrthogonalSimulator {
         entityAtPosition.clear();
         positionOfEntity.clear();
         grabCounts.clear();
-        heldByMechanism.forEach(List::clear);
+        heldByMechanism.forEach(Set::clear);
         Arrays.fill(outputCounts, 0);
         nextEntityId = 1;
         List<MechanismSpec> mechanisms = plan.mechanisms();
@@ -202,6 +204,13 @@ public final class OrthogonalSimulator {
         Snapshot snapshot = captureState();
         glyphs.beginCycle(cycle);
         try {
+            List<MechanismSpec> mechanisms = plan.mechanisms();
+            // 1. 解码：同一周期、同一条指令带语义。
+            for (int i = 0; i < mechanisms.size(); i++) {
+                pendingInstructions[i] = mechanisms.get(i).tape().instructionAt(cycle);
+                resolveTrackMotion(i, pendingInstructions[i]);
+            }
+
             runHalfCycle(GlyphPhase.FIRST_HALF);
             if (halted) {
                 return;
@@ -241,10 +250,10 @@ public final class OrthogonalSimulator {
         List<MechanismSpec> mechanisms = plan.mechanisms();
 
         // 1. 解码：同一周期、同一条指令带语义。
-        for (int i = 0; i < mechanisms.size(); i++) {
-            pendingInstructions[i] = mechanisms.get(i).tape().instructionAt(cycle);
-            resolveTrackMotion(i, pendingInstructions[i]);
-        }
+//        for (int i = 0; i < mechanisms.size(); i++) {
+//            pendingInstructions[i] = mechanisms.get(i).tape().instructionAt(cycle);
+//            resolveTrackMotion(i, pendingInstructions[i]);
+//        }
 
         // 2. 收集本半周期的意图批次。
         List<EntityIntent> intents = new ArrayList<>();
@@ -292,6 +301,8 @@ public final class OrthogonalSimulator {
         }
         if (phase.isSecondHalf() && !checkRuntimeOverlaps(changes)) {
             glyphs.clearJustClaimed();
+            // 分子 bfs 缓存已过期
+            moleculeBfsCache.clear();
             return;
         }
 
@@ -301,17 +312,26 @@ public final class OrthogonalSimulator {
             System.arraycopy(nextY, 0, y, 0, y.length);
             System.arraycopy(nextDirection, 0, direction, 0, direction.length);
             System.arraycopy(nextLength, 0, length, 0, length.length);
+            System.arraycopy(nextGrabbed, 0, grabbed, 0, grabbed.length);
         }
 
         // 8. 提交实体状态与持有关系。
         commitAtomChanges(changes);
         for (EntityIntent intent : intents) {
-            List<Long> held = heldByMechanism.get(intent.mechanismIndex());
+            int i = intent.mechanismIndex();
+            Set<Long> held = heldByMechanism.get(i);
             long entity = intent.entity();
             switch (intent.kind()) {
-                case GRAB -> held.add(entity);
-                case RELEASE -> held.remove(entity);
+                case GRAB -> {
+                    nextGrabbed[i] = true;
+                    held.add(entity);
+                }
+                case RELEASE -> {
+                    nextGrabbed[i] = false;
+                    held.clear();
+                }
                 case STAY, MOVE, ROTATE -> {
+                    nextGrabbed[i] = grabbed[i];
                     // 持有约束与运动不改变持有关系。
                 }
             }
@@ -467,7 +487,11 @@ public final class OrthogonalSimulator {
             hash ^= Long.rotateRight(y[i] * 0x165667b19e3779f9L, i & 63);
             hash = Long.rotateLeft(hash, 17)
                     ^ direction[i]
-                    ^ ((long) length[i] << Byte.SIZE);
+                    ^ ((long) length[i] << Byte.SIZE)
+                    ^ ((long) plan.mechanisms().get(i).combination().code() << 16);
+            for (long entity : heldByMechanism.get(i)) {
+                hash = Long.rotateLeft(hash, 17) ^ entity;
+            }
         }
         return hash;
     }
@@ -479,6 +503,7 @@ public final class OrthogonalSimulator {
                 new GridPoint(x[index], y[index]),
                 Direction.fromOrdinal(direction[index]),
                 length[index],
+                plan.mechanisms().get(index).combination(),
                 !heldByMechanism.get(index).isEmpty());
     }
 
@@ -521,122 +546,157 @@ public final class OrthogonalSimulator {
             Instruction instruction,
             GlyphPhase phase,
             List<EntityIntent> intents) {
-        List<Long> held = heldByMechanism.get(mechIndex);
-        Direction facing = Direction.fromOrdinal(direction[mechIndex]);
 
-        // 第一半周期只执行抓取与释放；第二半周期执行其余指令。
-        if (phase.isFirstHalf()) {
-            switch (instruction) {
-                case GRAB -> {
-                    // 已经持有实体时抓取是空操作
-                    if (!held.isEmpty()) {
-                        return;
-                    }
-                    GridPoint target = grabPosition(mechIndex, facing);
-                    Molecule molecule = moleculeAt(target);
-                    for (AtomPlacement ap : molecule.atoms()) {
-                        intents.add(EntityIntent.grab(
-                                entityAtPosition.getOrDefault(ap.position(), 0L),
-                                mechIndex));
-                    }
-                }
-                case RELEASE -> {
-                    for (long entity : held) {
-                        intents.add(EntityIntent.release(entity, mechIndex));
-                    }
-                }
-                default -> {
-                    // 其它指令在第二半周期执行。
-                }
-            }
+        if (phase.isSecondHalf()) {
+            intents.addAll(buildMotionIntents(mechIndex, instruction));
             return;
         }
 
-        // 未抓握实体则无需收集意图
-        if (held.isEmpty()) {
-            return;
-        }
-
-        var entities = new HashSet<Long>(held.size() * 2);
-        // 检索被抓握的分子
-        for (long entity : held) {
-            if (entities.contains(entity)) {
-                continue;
-            }
-            GridPoint target =  positionOfEntity.get(entity);
-            if (target == null) {
-                continue;
-            }
-            entities.add(entity);
-            Molecule molecule = moleculeAt(target);
-            for (AtomPlacement atom : molecule.atoms()) {
-                entities.add(entityAtPosition.get(atom.position()));
-            }
-        }
-
-        int firstIntent = intents.size();
+        Set<Long> held = heldByMechanism.get(mechIndex);
         switch (instruction) {
-            case MOVE_FORWARD, MOVE_BACKWARD -> {
-                long deltaX = pendingTrackDeltaX[mechIndex];
-                long deltaY = pendingTrackDeltaY[mechIndex];
-                if (deltaX == 0 && deltaY == 0) {
-                    break;
+            case GRAB -> {
+                // 已抓握则不处理
+                if (grabbed[mechIndex]) {
+                    return;
                 }
-                for (long entity : entities) {
-                    intents.add(EntityIntent.move(entity, mechIndex, deltaX, deltaY));
-                }
-            }
-            case ROTATE_CCW -> {
-                GridPoint center = new GridPoint(x[mechIndex], y[mechIndex]);
-                for (long entity : entities) {
-                    intents.add(EntityIntent.rotate(entity, mechIndex, center, -1));
+                held.addAll(collectGrabbing(mechIndex));
+                for (long entity : held) {
+                    intents.add(EntityIntent.grab(entity, mechIndex));
                 }
             }
-            case ROTATE_CW -> {
-                GridPoint center = new GridPoint(x[mechIndex], y[mechIndex]);
-                for (long entity : entities) {
-                    intents.add(EntityIntent.rotate(entity, mechIndex, center, 1));
+            case RELEASE -> {
+                // 未抓握则不处理
+                if (!grabbed[mechIndex]) {
+                    return;
                 }
+                for (long entity : held) {
+                    intents.add(EntityIntent.release(entity, mechIndex));
+                }
+                held.clear();
             }
-            case PIVOT_CCW -> {
-                GridPoint center = grabPosition(mechIndex, facing);
-                for (long entity : entities) {
-                    intents.add(EntityIntent.rotate(entity, mechIndex, center, -1));
-                }
-            }
-            case PIVOT_CW -> {
-                GridPoint center = grabPosition(mechIndex, facing);
-                for (long entity : entities) {
-                    intents.add(EntityIntent.rotate(entity, mechIndex, center, 1));
-                }
-            }
-            case EXTEND_PISTON -> {
-                if (length[mechIndex] >= MechanismSpec.MAX_LENGTH) {
-                    break;
-                }
-                for (long entity : entities) {
-                    intents.add(EntityIntent.move(
-                            entity, mechIndex, facing.deltaX(), facing.deltaY()));
-                }
-            }
-            case RETRACT_PISTON -> {
-                if (length[mechIndex] <= MechanismSpec.MIN_LENGTH) {
-                    break;
-                }
-                for (long entity : entities) {
-                    intents.add(EntityIntent.move(
-                            entity, mechIndex, -facing.deltaX(), -facing.deltaY()));
-                }
-            }
-            case GRAB, RELEASE, WAIT -> {
-                // 抓取与释放已经在第一半周期执行。
+            default -> {
+                // 其它指令在第二半周期执行。
             }
         }
-        if (intents.size() == firstIntent) {
-            // 等待、重复抓取、轨道端点和活塞边界都必须保留静止持有约束。
-            for (long entity : entities) {
-                intents.add(EntityIntent.stay(entity, mechIndex));
+    }
+
+    /**
+     * 按分支臂顺序收集抓取关联
+     *
+     * @param index 机械下标
+     * @return 待抓握实体集合
+     */
+    private Set<Long> collectGrabbing(int index) {
+        ArmCombination combination = plan.mechanisms().get(index).combination();
+        Direction facing = Direction.fromOrdinal(direction[index]);
+        GridPoint base = new GridPoint(x[index], y[index]);
+        GridPoint[] claws = combination.grabPositionsArray(base, facing, length[index]);
+        Set<Long> grabbing = new HashSet<>();
+
+        for (GridPoint target : claws) {
+            if (target != null) {
+                collectEntities(target, grabbing);
             }
+        }
+        return grabbing;
+    }
+
+    /**
+     * 当前已提交持有状态对当前指令的运动意图，不预测抓取，也不推进或修改模拟器。
+     * 返回不可变快照，仅含 STAY/MOVE/ROTATE；释放指令返回空列表。
+     */
+    public List<EntityIntent> motionIntents(int index) {
+        Objects.checkIndex(index, mechanismCount());
+        return buildMotionIntents(index, plan.mechanisms().get(index).tape().instructionAt(cycle));
+    }
+
+    /** 执行与预览共用的纯构建路径，连通变化只传播运动关联而不扩大持有集合。 */
+    private List<EntityIntent> buildMotionIntents(int index, Instruction instruction) {
+        Set<Long> held = heldByMechanism.get(index);
+        if (held.isEmpty() || instruction == Instruction.RELEASE) {
+            return List.of();
+        }
+
+        ArmCombination combination = plan.mechanisms().get(index).combination();
+        Direction facing = Direction.fromOrdinal(direction[index]);
+        GridPoint base = new GridPoint(x[index], y[index]);
+        GridPoint trackDelta = trackDelta(index, instruction);
+        GridPoint[] claws = combination.grabPositionsArray(base, facing, length[index]);
+        Set<EntityIntent> intents = new LinkedHashSet<>();
+        List<Set<Long>> heldEntities = collectHeldEntities(index);
+        for (int iArm = 0; iArm < 8; iArm++) {
+            GridPoint pivot = claws[iArm];
+            if (pivot == null) {
+                continue;
+            }
+            for (long entity : heldEntities.get(iArm)) {
+                switch (instruction) {
+                    case MOVE_FORWARD, MOVE_BACKWARD -> {
+                        if (trackDelta.x() == 0 && trackDelta.y() == 0) {
+                            intents.add(EntityIntent.stay(entity, index));
+                        } else {
+                            intents.add(EntityIntent.move(entity, index, trackDelta.x(), trackDelta.y()));
+                        }
+                    }
+                    case ROTATE_CCW, ROTATE_CW -> intents.add(EntityIntent.rotate(
+                            entity, index, base, instruction == Instruction.ROTATE_CCW ? -1 : 1));
+                    case EXTEND_PISTON, RETRACT_PISTON -> {
+                        boolean extend = instruction == Instruction.EXTEND_PISTON;
+                        boolean retract = instruction == Instruction.RETRACT_PISTON;
+                        if ((extend && length[index] >= MechanismSpec.MAX_LENGTH)
+                                || (retract && length[index] <= MechanismSpec.MIN_LENGTH)) {
+                            intents.add(EntityIntent.stay(entity, index));
+                            break; // switch
+                        }
+                        GridPoint offset = combination.worldOffset(facing, iArm);
+                        int sign = extend ? 1 : -1;
+                        intents.add(EntityIntent.move(entity, index, sign * offset.x(), sign * offset.y()));
+                    }
+                    case PIVOT_CCW, PIVOT_CW -> intents.add(EntityIntent.rotate(
+                            entity, index, pivot, instruction == Instruction.PIVOT_CCW ? -1 : 1));
+                    case GRAB, WAIT -> intents.add(EntityIntent.stay(entity, index));
+                    case RELEASE -> {
+                        // 在入口处统一排除释放指令。
+                    }
+                }
+            }
+        }
+        return List.copyOf(intents);
+    }
+
+    /** 按分支 bit、分子原子顺序收集抓取关联，重叠命中只合并掩码。 */
+    private List<Set<Long>> collectHeldEntities(int index) {
+        var result = new ArrayList<Set<Long>>(8);
+        ArmCombination combination = plan.mechanisms().get(index).combination();
+        Direction facing = Direction.fromOrdinal(direction[index]);
+        GridPoint base = new GridPoint(x[index], y[index]);
+
+        for (GridPoint target : combination.grabPositionsArray(base, facing, length[index])) {
+            if (target != null) {
+                result.add(collectEntities(target));
+            } else {
+                result.add(Collections.emptySet());
+            }
+        }
+        return result;
+    }
+
+    private Set<Long> collectEntities(GridPoint target) {
+        Set<Long> result = new HashSet<>();
+        collectEntities(target, result);
+        return result;
+    }
+
+    private void collectEntities(GridPoint target, Set<Long> result) {
+        boolean ft = false;
+        Molecule molecule = moleculeBfsCache.get(target);
+        if (molecule == null) {
+            molecule = moleculeAt(target);
+            ft = true;
+        }
+        for (AtomPlacement atom : molecule.atoms()) {
+            result.add(entityAtPosition.get(atom.position()));
+            if (ft) moleculeBfsCache.put(atom.position(), molecule);
         }
     }
 
@@ -676,30 +736,29 @@ public final class OrthogonalSimulator {
 
     /** 解码当前格点唯一的轨道位移；端点和非轨道格点都解析为原地等待。 */
     private void resolveTrackMotion(int index, Instruction instruction) {
-        pendingTrackDeltaX[index] = 0;
-        pendingTrackDeltaY[index] = 0;
+        GridPoint delta = trackDelta(index, instruction);
+        pendingTrackDeltaX[index] = delta.x();
+        pendingTrackDeltaY[index] = delta.y();
+    }
 
+    /** 轨道查询本身不修改待提交区，供运动预览和实际执行共同使用。 */
+    private GridPoint trackDelta(int index, Instruction instruction) {
         TrackDirection trackDirection = switch (instruction) {
             case MOVE_FORWARD -> TrackDirection.PLUS;
             case MOVE_BACKWARD -> TrackDirection.MINUS;
             default -> null;
         };
         if (trackDirection == null) {
-            return;
+            return new GridPoint(0, 0);
         }
-
         GridPoint position = new GridPoint(x[index], y[index]);
         GridPoint destination = plan.trackDestination(position, trackDirection);
-        pendingTrackDeltaX[index] = Math.subtractExact(destination.x(), position.x());
-        pendingTrackDeltaY[index] = Math.subtractExact(destination.y(), position.y());
+        return new GridPoint(
+                Math.subtractExact(destination.x(), position.x()),
+                Math.subtractExact(destination.y(), position.y()));
     }
 
-    private GridPoint grabPosition(int index, Direction facing) {
-        return new GridPoint(x[index], y[index]).translate(facing, length[index]);
-    }
-
-    private List<AtomChange> computeAtomChanges(
-            Map<Long, List<EntityIntent>> intentsByEntity) {
+    private List<AtomChange> computeAtomChanges(Map<Long, List<EntityIntent>> intentsByEntity) {
         List<AtomChange> changes = new ArrayList<>(intentsByEntity.size());
         for (Map.Entry<Long, List<EntityIntent>> entry : intentsByEntity.entrySet()) {
             long entity = entry.getKey();
@@ -948,8 +1007,8 @@ public final class OrthogonalSimulator {
     /** 本周期开始时的完整状态快照；回滚时用它恢复。 */
     private Snapshot captureState() {
         List<List<Long>> held = new ArrayList<>(heldByMechanism.size());
-        for (List<Long> src : heldByMechanism) {
-            held.add(List.copyOf(src));
+        for (int i = 0; i < heldByMechanism.size(); i++) {
+            held.add(List.copyOf(heldByMechanism.get(i)));
         }
         return new Snapshot(
                 Arrays.copyOf(x, x.length),
@@ -987,19 +1046,10 @@ public final class OrthogonalSimulator {
         positionOfEntity.putAll(snapshot.positionOfEntity());
         grabCounts.clear();
         grabCounts.putAll(snapshot.grabCounts());
-        List<List<Long>> heldSnapshot = snapshot.held();
-        int len = Math.max(heldByMechanism.size(), heldSnapshot.size());
-        for (int i = 0; i < len; i++) {
-            if (i >= heldSnapshot.size()) {
-                break;
-            }
-            if (i >= heldByMechanism.size()) {
-                heldByMechanism.add(new ArrayList<>(heldSnapshot.get(i)));
-                continue;
-            }
-            List<Long> held = heldByMechanism.get(i);
+        for (int i = 0; i < heldByMechanism.size(); i++) {
+            Set<Long> held = heldByMechanism.get(i);
             held.clear();
-            held.addAll(heldSnapshot.get(i));
+            held.addAll(snapshot.held().get(i));
         }
         System.arraycopy(snapshot.outputCounts(), 0, outputCounts, 0, outputCounts.length);
         nextEntityId = snapshot.nextEntityId();
