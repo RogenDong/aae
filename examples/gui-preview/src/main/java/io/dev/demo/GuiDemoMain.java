@@ -45,16 +45,22 @@ public final class GuiDemoMain {
 
         return new SimulationPlan(
                 List.of(// 机械臂
-                        new MechanismSpec(point(-1, 0), Direction.WEST, "feqqerfeqqer", 2),
-                        new MechanismSpec(point(0, 0), Direction.EAST, "rdfardfardfa"),
-                        new MechanismSpec(point(1, 1), Direction.WEST, "fdrafdrafdra"),
+                        new MechanismSpec(point(-1, 0), Direction.WEST, "feqqer", 2),
+                        new MechanismSpec(point(0, 0), Direction.EAST, "rdfa"),
+                        new MechanismSpec(point(1, 1), Direction.WEST, "fdra"),
                         new MechanismSpec(point(5, 0), Direction.WEST, "fgggrgfgggrg", 2),
                         new MechanismSpec(point(6, 1), Direction.WEST, "rgfgggrgfggg", 2),
-                        new MechanismSpec(point(4, 0), Direction.WEST, "ggrgfgggrgfg", 2)
+                        new MechanismSpec(point(4, 0), Direction.WEST, "ggrgfgggrgfg", 2),
+                        // 正向与对角分支分别携带独立原子，共享伸缩，避免同分子伸缩冲突。
+                        new MechanismSpec(point(-3, 2), Direction.EAST, 0x11, "fwrs")
                 ),
                 List.of(track),
-                List.of(input1, input2, input3),
-                List.of(output),
+                List.of(input1, input2, input3,
+                        InputSpec.of(AtomPlacement.of(-2, 2, OMAtom.water())),
+                        InputSpec.of(AtomPlacement.of(-2, 3, OMAtom.earth()))),
+                List.of(output,
+                        OutputSpec.of(AtomPlacement.of(-1, 2, OMAtom.water())),
+                        OutputSpec.of(AtomPlacement.of(-1, 4, OMAtom.earth()))),
                 List.of(calcification, bonder),
                 5);
     }

@@ -128,14 +128,19 @@ public final class FloatWorld {
                 }
             }
 
-            dynamicArms.add(new FloatArm(i, currentX, currentY,
-                    currentAngle, currentLength, view.grabbing()));
+            // 所有分支共享机构状态；局部偏移决定分支角度及对角杆的实际长度。
+            for (int bit : view.combination().enabledBits()) {
+                GridPoint offset = view.combination().localOffset(bit);
+                double angle = currentAngle + Math.atan2(offset.y(), offset.x());
+                double length = currentLength * Math.hypot(offset.x(), offset.y());
+                dynamicArms.add(new FloatArm(i, bit, currentX, currentY,
+                        angle, length, view.grabbing()));
+            }
         }
 
         // 3. 为每个实体解析唯一的插值运动，再收集棋盘上的原子。
         //    多个机构可能同时持有不同分子，格点上的抓取计数并不说明当前原子属于哪个机构。
-        Map<Long, AtomMotion> entityMotions = collectEntityMotions(
-                simulator, plan, currentCycle);
+        Map<Long, EntityIntent> entityMotions = collectEntityMotions(simulator, plan);
         for (GridPoint pos : simulator.atomPositions()) {
             Atom atom = simulator.atomAt(pos);
             if (atom == null) continue;
@@ -145,13 +150,16 @@ public final class FloatWorld {
             double atomRot = 0.0;
 
             long entity = simulator.entityAt(pos);
-            AtomMotion motion = entity == 0 ? null : entityMotions.get(entity);
+            EntityIntent motion = entity == 0 ? null : entityMotions.get(entity);
             if (motion != null) {
-                if (motion.isTranslation()) {
+                if (motion.kind() == EntityIntent.Kind.MOVE) {
                     atomX += motion.deltaX() * this.portion;
                     atomY += motion.deltaY() * this.portion;
-                } else {
-                    double dAngle = (Math.PI / 2.0) * motion.quarterTurns() * this.portion;
+                } else if (motion.kind() == EntityIntent.Kind.ROTATE) {
+                    // 意图使用模四转数；逆时针四分之一圈应沿短弧插值而非顺时针转三圈。
+                    int turns = motion.quarterTurns() > 2
+                            ? motion.quarterTurns() - 4 : motion.quarterTurns();
+                    double dAngle = (Math.PI / 2.0) * turns * this.portion;
                     GridPoint center = motion.rotationCenter();
                     double rx = pos.x() - center.x();
                     double ry = pos.y() - center.y();
@@ -175,42 +183,22 @@ public final class FloatWorld {
      * 的运动只应用一次；若持有者给出冲突运动，当前周期没有可安全插值的目标，
      * 因而让该实体保持在已提交位置，等待模拟器在提交周期报告停机。</p>
      */
-    private static Map<Long, AtomMotion> collectEntityMotions(
-            OrthogonalSimulator simulator,
-            SimulationPlan plan,
-            long currentCycle) {
-        Map<Long, AtomMotion> resolved = new LinkedHashMap<>();
-//        Map<Long, Set<AtomMotion>> candidates = new LinkedHashMap<>();
+    private static Map<Long, EntityIntent> collectEntityMotions(
+            OrthogonalSimulator simulator, SimulationPlan plan) {
+        Map<Long, EntityIntent> resolved = new LinkedHashMap<>();
+        Set<Long> conflicts = new HashSet<>();
         for (int i = 0; i < plan.mechanisms().size(); i++) {
-            var spec = plan.mechanisms().get(i);
-            List<Long> held = simulator.heldEntities(i);
-            if (held.isEmpty()) {
-                continue;
-            }
-            Instruction instruction = spec.tape().instructionAt(currentCycle);
-            MechanismView mechanism = simulator.mechanism(i);
-            AtomMotion motion = AtomMotion.from(instruction, mechanism, plan);
-            if (motion == null) {
-                continue;
-            }
-            Molecule molecule = simulator.moleculeAt(mechanism.grabPosition());
-            Set<Long> entities = new HashSet<Long>(held.size() + molecule.atoms().size());
-            entities.addAll(held);
-            for (AtomPlacement atom : molecule.atoms()) {
-                entities.add(simulator.entityAt(atom.position()));
-            }
-            for (long entity : entities) {
-                resolved.put(entity, motion);
+            for (EntityIntent intent : simulator.motionIntents(i)) {
+                long entity = intent.entity();
+                if (conflicts.contains(entity)) continue;
+                EntityIntent previous = resolved.putIfAbsent(entity, intent);
+                if (previous != null && !previous.compatibleWith(intent)) {
+                    // 冲突身份单独保留，防止后续兼容意图覆盖冲突，确保声明顺序无关。
+                    conflicts.add(entity);
+                    resolved.remove(entity);
+                }
             }
         }
-
-//        for (Map.Entry<Long, Set<AtomMotion>> entry : candidates.entrySet()) {
-//            // 一组中的一个也会折叠重复的兼容持有者
-//            // 更大的集合表示相同的冲突，会阻止 step()
-//            if (entry.getValue().size() == 1) {
-//                resolved.put(entry.getKey(), entry.getValue().iterator().next());
-//            }
-//        }
         return resolved;
     }
 
@@ -223,49 +211,4 @@ public final class FloatWorld {
                 Math.subtractExact(destination.y(), origin.y()));
     }
 
-    private record AtomMotion(
-            long deltaX,
-            long deltaY,
-            GridPoint rotationCenter,
-            int quarterTurns) {
-
-        private static final AtomMotion HELD_STILL = new AtomMotion(0, 0, null, 0);
-
-        private static AtomMotion from(
-                Instruction instruction,
-                MechanismView mechanism,
-                SimulationPlan plan) {
-            Direction facing = mechanism.direction();
-            return switch (instruction) {
-                case MOVE_FORWARD -> fromTrack(plan, mechanism, TrackDirection.PLUS);
-                case MOVE_BACKWARD -> fromTrack(plan, mechanism, TrackDirection.MINUS);
-                case ROTATE_CW -> new AtomMotion(
-                        0, 0, mechanism.position(), 1);
-                case ROTATE_CCW -> new AtomMotion(
-                        0, 0, mechanism.position(), -1);
-                case PIVOT_CW -> new AtomMotion(
-                        0, 0, mechanism.grabPosition(), 1);
-                case PIVOT_CCW -> new AtomMotion(
-                        0, 0, mechanism.grabPosition(), -1);
-                case EXTEND_PISTON -> mechanism.length() < MechanismSpec.MAX_LENGTH
-                        ? new AtomMotion(facing.deltaX(), facing.deltaY(), null, 0)
-                        : HELD_STILL;
-                case RETRACT_PISTON -> mechanism.length() > MechanismSpec.MIN_LENGTH
-                        ? new AtomMotion(-facing.deltaX(), -facing.deltaY(), null, 0)
-                        : HELD_STILL;
-                case GRAB, WAIT -> HELD_STILL;
-                case RELEASE -> null;
-            };
-        }
-
-        private static AtomMotion fromTrack(
-                SimulationPlan plan, MechanismView mechanism, TrackDirection direction) {
-            GridPoint motion = trackMotion(plan, mechanism, direction);
-            return new AtomMotion(motion.x(), motion.y(), null, 0);
-        }
-
-        private boolean isTranslation() {
-            return rotationCenter == null;
-        }
-    }
 }

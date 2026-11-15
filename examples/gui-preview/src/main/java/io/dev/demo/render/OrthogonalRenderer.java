@@ -206,6 +206,13 @@ public final class OrthogonalRenderer {
         for (FloatArm arm : floatWorld.dynamicArms()) {
             renderArm(g2, originX, originY, arm);
         }
+        // 所有分支画完后每机构只画一次公共基座和编号，避免杆身遮挡编号。
+        java.util.Set<Integer> renderedBases = new java.util.HashSet<>();
+        for (FloatArm arm : floatWorld.dynamicArms()) {
+            if (renderedBases.add(arm.mechanismIndex())) {
+                renderArmBase(g2, originX, originY, arm);
+            }
+        }
     }
 
     /**
@@ -382,15 +389,11 @@ public final class OrthogonalRenderer {
         int cell = config.cellSize();
         int width = config.armWidth();
         int atomRadius = config.atomRadius();
-        int length = (int) (arm.length() * cell);
+        double length = arm.length() * cell;
 
         // 黑色朴素矩形：从基座中心 (0, 0) 延伸向当前朝向 (length, 0)
         g2.setColor(config.armColor());
         g2.fill(new Rectangle2D.Double(0, -width / 2.0, length - atomRadius, width));
-
-        // 臂基座黑色圆形
-        int baseSize = (atomRadius - 6) << 1;
-        g2.fill(new Ellipse2D.Double(-baseSize / 2.0, -baseSize / 2.0, baseSize, baseSize));
 
         // 抓手指示
         int clawSize = width >> 1;
@@ -403,6 +406,15 @@ public final class OrthogonalRenderer {
         g2.draw(new Ellipse2D.Double(length - atomRadius, -atomRadius, atomRadius * 2, atomRadius * 2));
 
         g2.setTransform(oldTx);
+    }
+
+    /** 公共基座不属于某个分支，每机构只绘制一次并显示其声明序号。 */
+    private void renderArmBase(Graphics2D g2, double originX, double originY, FloatArm arm) {
+        double px = originX + arm.x() * config.cellSize();
+        double py = originY + arm.y() * config.cellSize();
+        int baseSize = (config.atomRadius() - 6) << 1;
+        g2.setColor(config.armColor());
+        g2.fill(new Ellipse2D.Double(px - baseSize / 2.0, py - baseSize / 2.0, baseSize, baseSize));
 
         // 按声明顺序显示从 1 开始的机械臂编号
         g2.setColor(Color.WHITE);
