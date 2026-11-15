@@ -29,6 +29,10 @@ public record MechanismSpec(
                 InstructionTape.parse(tape, 0, InstructionTape.Playback.LOOPING));
     }
 
+    public MechanismSpec(GridPoint position, Direction direction, int combination, String tape) {
+        this(position, direction, MIN_LENGTH, new ArmCombination(combination), tape);
+    }
+
     public MechanismSpec(GridPoint position, Direction direction,
                          ArmCombination combination, String tape) {
         this(position, direction, MIN_LENGTH, combination, tape);
