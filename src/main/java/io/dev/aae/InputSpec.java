@@ -1,9 +1,6 @@
 package io.dev.aae;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Objects;
-import java.util.Set;
 
 /**
  * 输入的不可变定义：一个按绝对格点排列的原子模板。
@@ -18,17 +15,6 @@ public final class InputSpec extends IOSpec {
 
     public InputSpec(List<AtomPlacement> atoms) {
         super(atoms);
-        if (atoms.isEmpty()) {
-            throw new IllegalArgumentException("input must produce at least one atom");
-        }
-        Set<GridPoint> positions = new HashSet<>();
-        for (AtomPlacement placement : atoms) {
-            Objects.requireNonNull(placement, "atoms must not contain null");
-            if (!positions.add(placement.position())) {
-                throw new IllegalArgumentException(
-                        "duplicate input atom position: " + placement.position());
-            }
-        }
     }
 
     /** 由若干原子模板建立输入。 */

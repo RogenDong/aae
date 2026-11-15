@@ -1,8 +1,6 @@
 package io.dev.aae;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * 输出的不可变定义：一个按绝对格点排列的原子模板。
@@ -17,65 +15,6 @@ public final class OutputSpec extends IOSpec {
 
     public OutputSpec(List<AtomPlacement> atoms) {
         super(atoms);
-        if (this.atoms.isEmpty()) {
-            throw new IllegalArgumentException("output must define at least one atom");
-        }
-        Map<GridPoint, Atom> atomsAt = new LinkedHashMap<>();
-        for (AtomPlacement placement : this.atoms) {
-            if (atomsAt.putIfAbsent(placement.position(), placement.atom()) != null) {
-                throw new IllegalArgumentException(
-                        "duplicate output atom position: " + placement.position());
-            }
-        }
-        validateMolecule(atomsAt);
-    }
-
-    private static void validateMolecule(Map<GridPoint, Atom> atomsAt) {
-        AtomGrid grid = new AtomGrid();
-        Direction[] directions = Direction.values();
-        for (var entry : atomsAt.entrySet()) {
-            GridPoint position = entry.getKey();
-            Atom atom = entry.getValue();
-            grid.put(position, atom);
-            byte[] bondTypes = atom.bondTypes();
-            for (Direction direction : directions) {
-                byte bond = bondTypes[direction.ordinal()];
-                if (bond == 0) {
-                    continue;
-                }
-                if (bond == Atom.TEMPORARY_BOND) {
-                    throw invalidBond(position, direction, "temporary bonds are not allowed");
-                }
-                GridPoint neighbour;
-                try {
-                    neighbour = position.translate(direction);
-                } catch (ArithmeticException overflow) {
-                    throw invalidBond(position, direction, "bond position overflows grid coordinates");
-                }
-                Atom neighbourAtom = atomsAt.get(neighbour);
-                if (neighbourAtom == null) {
-                    throw invalidBond(position, direction, "bond points outside the output template");
-                }
-                if (neighbourAtom.bondType(direction.opposite()) != bond) {
-                    throw invalidBond(position, direction, "bond is not reciprocal with " + neighbour);
-                }
-            }
-        }
-
-        GridPoint start = atomsAt.keySet().iterator().next();
-        Molecule molecule = MoleculeBfs.moleculeAt(grid, start);
-        if (molecule.size() != atomsAt.size()) {
-            GridPoint disconnected = atomsAt.keySet().stream()
-                    .filter(position -> !molecule.contains(position)).findFirst().orElseThrow();
-            throw new IllegalArgumentException(
-                    "output atom at " + disconnected + " is not connected to " + start);
-        }
-    }
-
-    private static IllegalArgumentException invalidBond(
-            GridPoint position, Direction direction, String reason) {
-        return new IllegalArgumentException(
-                "invalid output bond at " + position + " toward " + direction + ": " + reason);
     }
 
     /** 由若干原子模板建立输出。 */
