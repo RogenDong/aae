@@ -2,13 +2,13 @@
 
 这是一个参考 `omsim` 与 `omclone` 分层思路实现的 Java 仿真器基线。它使用无限方格、东南西北四种机构朝向、正交/对角轨道和按周期读取的指令带；运行期检查周期结束后的分子重叠、分子/机构基座重叠与机构基座之间的重叠，不执行变换过程中的实时碰撞采样。
 
-当前版本聚焦最小但可执行的核心：多个机构可沿显式轨道移动、绕基座或抓握点旋转、伸缩、等待；轨道由有序格点定义，分别只允许正交单位步或对角单位步；原子网格以 `int` 保存原子类型、以 `byte` 保存四方向键类型（编码由调用方定义）并提供分子连通分量搜索；输入在每个周期末尾生产模板分子，输出消费类型、键与形状完全一致的未抓取分子并驱动完成条件；指令带支持抓取与释放，同一实体收到不兼容意图时模拟器停机并警告。
+当前版本聚焦最小但可执行的核心：机构可沿显式轨道移动、绕基座或抓握点旋转、等待，活塞机构额外支持伸缩；轨道由有序格点定义，分别只允许正交单位步或对角单位步；原子网格以 `int` 保存原子类型、以 `byte` 保存四方向键类型（编码由调用方定义）并提供分子连通分量搜索；输入在每个周期末尾生产模板分子，输出消费类型、键与形状完全一致的未抓取分子并驱动完成条件；指令带支持抓取与释放，同一实体收到不兼容意图时模拟器停机并警告。
 
 ## 设计要点
 
 - 坐标使用不可变 `GridPoint(x, y)`；`x` 向东递增，`y` 向南递增。
 - `Direction` 提供四邻接移动、90 度旋转、反向和局部坐标变换。符文局部形状按朝东状态定义，`GlyphSpec` 默认朝东；局部正 x 沿实例朝向，局部正 y 沿其右侧。
-- `SimulationPlan`、`TrackSpec`、`MechanismSpec`、`InstructionTape` 是不可变定义；机构长度为 `1..3`，位置始终表示基座。
+- `SimulationPlan`、`TrackSpec`、`InstructionTape` 与 `MechanismSpec` 的两个具体子类 `StationarySpec`、`PistonArmSpec` 是不可变定义；机构长度为 `1..3`，位置始终表示基座。固定臂长机构支持组合多臂，活塞仅支持默认单臂。
 - 一条轨道可以自由混合正交与对角单位步，闭环必须显式声明。不同轨道禁止共享任何格点，包括端点和单点轨道；线段可在格子中心交叉，交叉处不连接。
 - `MOVE_FORWARD`/`MOVE_BACKWARD` 分别沿轨道有序点列的 `+`/`-` 方向移动，与机构朝向无关；开放端点和非轨道格点都保持原地。
 - `OrthogonalSimulator` 保存可变运行态，并按 decode → intent → conflict → transform → commit → produce → consume 推进每个周期。
@@ -27,7 +27,7 @@
 - 同一实体收到不兼容意图、或两个原子落入同一格时，模拟器停机、记录警告并保持冲突周期之前的状态；`reset()` 才能恢复。
 - 输入足迹被任何原子或延迟产物预留占用时该半周期不生产；输出匹配要求分子大小、原子类型与长期键完全一致，且没有任何原子被机构持有。
 - `f` 收集全部启用分支抓点上的完整分子，按实体去重后登记机构共享持有；同一机构每实体只计一次，不同机构共持则分别计数。`r` 统一释放，每实体减一次，实体留在原地。机构已有持有实体时重复 `f` 整体为空操作，不给空分支补抓；空抓不建立自动抓取状态。
-- 分支仅通过运动关联提供枢轴中心及伸缩方向，没有逐臂抓握状态或独立持有关系。轨道移动与 `a/d` 作用于整个共享集合；`q/e` 使用各关联分支的实际抓点，`w/s` 使用该分支的世界单位偏移。相同运动只执行一次，不同枢轴或不同伸缩位移不兼容，警告停机并回滚整个周期；成键后继续按现有连通分子展开运动。
+- 分支仅通过运动关联提供枢轴中心，没有逐臂抓握状态或独立持有关系。轨道移动与 `a/d` 作用于整个共享集合；`q/e` 使用各关联分支的实际抓点。相同运动只执行一次，不同枢轴的旋转不兼容，警告停机并回滚整个周期；成键后继续按现有连通分子展开运动。只有默认单臂活塞的 `w/s` 会沿朝向平移持有分子。
 - 核心库没有第三方运行时依赖；JUnit 仅用于测试。
 
 完整的 `omsim` 对照分析、取舍和扩展边界见 [docs/architecture.md](docs/architecture.md)。
@@ -95,11 +95,11 @@ SimulationPlan plan = SimulationPlan.withTracks(
         new GridPoint(0, 0),
         new GridPoint(1, 0),
         new GridPoint(2, 0)))),
-    new MechanismSpec(
+    new StationarySpec(
         new GridPoint(0, 0),
         Direction.EAST,
         InstructionTape.parse("g", 0, InstructionTape.Playback.LOOPING)),
-    new MechanismSpec(
+    new StationarySpec(
         new GridPoint(2, 0),
         Direction.WEST,
         InstructionTape.parse("t", 0, InstructionTape.Playback.LOOPING)));
@@ -123,30 +123,46 @@ simulator.step();
 | `e` | 将抓住的分子绕抓握点顺时针旋转 90 度 |
 | `a` | 绕机构基座逆时针旋转 90 度 |
 | `d` | 绕机构基座顺时针旋转 90 度 |
-| `w` | 活塞伸展一格，最大长度为 3 |
-| `s` | 活塞收缩一格，最小长度为 1 |
+| `w` | 仅 `PistonArmSpec` 伸展一格，最大长度为 3；`StationarySpec` 等待 |
+| `s` | 仅 `PistonArmSpec` 收缩一格，最小长度为 1；`StationarySpec` 等待 |
 | `f` | 抓取全部启用分支抓点上的分子，登记为机构共享持有 |
 | `r` | 释放当前持有的全部实体 |
 | `.` | 等待一个周期 |
 
 空白字符会被解析器忽略。指令带可以只运行一次，也可以循环，并可设置开始周期。
-所有机构使用同一个 `MechanismSpec` 模型；出现 `w`/`s` 指令时即表现为活塞，不需要
-单独的活塞子类型。长度范围为 `[1, 4)`，不传长度的三参数构造器默认长度为 1：
+
+`MechanismSpec` 是不可直接实例化的抽象 sealed 基类，只允许两个不可变 final 子类：
+
+- `StationarySpec` 固定臂长并保存 `ArmCombination`，可为单臂或多臂。“静态”只表示长度固定，
+  仍支持轨道移动、绕基座旋转、绕抓握点旋转及抓放；`w/s` 是占用原周期的等待，持有时仍提交 `STAY` 共持约束。
+- `PistonArmSpec` 支持全部指令，包括 `w/s`；只使用默认 bit0 单臂，不提供组合参数。
+
+计划、指令带 UI 等调用方仍可使用多态 `MechanismSpec`。公共访问器为 `initialPosition()`、
+`initialDirection()`、`length()`、`initialLength()`、`tape()`、`combination()`；
+`supportsInstruction(Instruction)` 查询能力，`instructionAt(cycle)` 返回当前周期的有效指令。
+原始 `tape()` 不会删除或改写不受支持的指令；模拟推进和机械臂动画都应读取 `instructionAt(cycle)`。
+长度范围为 `1..3`，省略长度时默认为 1，字符串构造器默认从周期 0 开始循环：
 
 ```java
-MechanismSpec piston = new MechanismSpec(
-        new GridPoint(0, 0),
-        Direction.EAST,
-        2,
-        InstructionTape.parse("fws", 0, InstructionTape.Playback.LOOPING));
+MechanismSpec stationary = new StationarySpec(
+        new GridPoint(0, 0), Direction.EAST, "fdra", 2);
+MechanismSpec piston = new PistonArmSpec(
+        new GridPoint(4, 0), Direction.EAST, 2,
+        InstructionTape.parse("fwrs", 0, InstructionTape.Playback.LOOPING));
 ```
+
+`StationarySpec` 承接原定义的全部构造形式，包括 `(position, direction, int combinationCode, String)`；
+该形式中的整数是组合编码，不是长度。单臂字符串构造器显式指定长度时使用 `(position, direction, String, int length)`。
+`PistonArmSpec` 接受 `(position, direction, int length, tape/string)`，也接受
+`(position, direction, tape/string[, int length])`，但不接受 `ArmCombination` 或组合编码。
 
 ### 组合臂与共享抓握
 
 `ArmCombination` 是不可变八位组合值，`new ArmCombination(code)` 严格接受 `1..255`
 （`0x01..0xFF`，共 255 种组合）；`0`、负数或大于 255 的 int 均无效，不会截断。
 `ArmCombination.fromByte((byte) 0x80)` 显式转换 Java 有符号 byte，结果编码为 128。
-旧构造器保持单臂 `0x01`；`armCount()` 返回启用分支数，`enabledBits()` 按 bit 下标升序遍历。
+`StationarySpec` 省略组合时使用单臂 `0x01`；`PistonArmSpec` 始终使用此默认单臂。
+`armCount()` 返回启用分支数，`enabledBits()` 按 bit 下标升序遍历。
 
 | 位 | 相对基准朝向的角度 | 单位局部偏移 |
 |---|---|---|
@@ -160,7 +176,7 @@ MechanismSpec piston = new MechanismSpec(
 | bit7 | 315° | `(1,-1)` |
 
 ```java
-MechanismSpec multiArm = new MechanismSpec(
+MechanismSpec multiArm = new StationarySpec(
         new GridPoint(0, 0), Direction.EAST, 2,
         new ArmCombination(0x11), InstructionTape.once("fdr"));
 // 初始抓点为 (2,0)、(2,2)；两个分支共享长度、基座、朝向、指令带与抓放状态。
@@ -296,7 +312,7 @@ grid.bond(left, Direction.EAST, (byte) 3, (byte) 2);
 
 ```java
 SimulationPlan plan = new SimulationPlan(
-        List.of(new MechanismSpec(
+        List.of(new StationarySpec(
                 new GridPoint(0, 1), Direction.NORTH,
                 InstructionTape.parse(".fgr", 0, InstructionTape.Playback.LOOPING))),
         List.of(new TrackSpec(List.of(

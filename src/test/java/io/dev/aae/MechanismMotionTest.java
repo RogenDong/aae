@@ -19,50 +19,125 @@ import org.junit.jupiter.api.Test;
 class MechanismMotionTest {
 
     @Test
-    void lengthIsValidatedAndLegacyConstructorsDefaultToOne() {
-        // 旧签名始终保留单臂默认值；新签名只扩展组合选择，不改变默认长度与长度校验。
-        InstructionTape tape = InstructionTape.empty();
-        MechanismSpec legacySpec = new MechanismSpec(
-                new GridPoint(0, 0), Direction.NORTH, tape);
-        MechanismView legacyView = new MechanismView(
-                new GridPoint(0, 0), Direction.NORTH, false);
+    void mechanismSubtypesValidateLengthsAndKeepExplicitCapabilities() {
+        // 封闭继承表达能力边界：静态臂拥有组合，活塞只有默认单臂，两者共享不可变公共定义。
+        assertTrue(java.lang.reflect.Modifier.isPublic(MechanismSpec.class.getModifiers()));
+        assertTrue(java.lang.reflect.Modifier.isAbstract(MechanismSpec.class.getModifiers()));
+        assertTrue(MechanismSpec.class.isSealed());
+        assertEquals(java.util.Set.of(StationarySpec.class, PistonSpec.class),
+                java.util.Set.of(MechanismSpec.class.getPermittedSubclasses()));
+        assertTrue(java.lang.reflect.Modifier.isFinal(StationarySpec.class.getModifiers()));
+        assertTrue(java.lang.reflect.Modifier.isFinal(PistonSpec.class.getModifiers()));
+        assertFalse(java.util.Arrays.stream(MechanismSpec.class.getDeclaredFields())
+                .anyMatch(field -> field.getType() == ArmCombination.class));
+        assertFalse(java.util.Arrays.stream(PistonSpec.class.getConstructors())
+                .flatMap(constructor -> java.util.Arrays.stream(constructor.getParameterTypes()))
+                .anyMatch(type -> type == ArmCombination.class));
 
-        assertEquals(1, legacySpec.length());
-        assertEquals(1, legacyView.length());
-        assertEquals(ArmCombination.DEFAULT, legacySpec.combination());
-        assertEquals(ArmCombination.DEFAULT, legacyView.combination());
-        assertEquals(1, ArmCombination.DEFAULT.code());
         GridPoint origin = new GridPoint(0, 0);
+        InstructionTape tape = InstructionTape.empty();
+        MechanismSpec stationary = new StationarySpec(origin, Direction.NORTH, tape);
+        MechanismSpec piston = new PistonSpec(origin, Direction.NORTH, tape);
+        MechanismView view = new MechanismView(origin, Direction.NORTH, false);
+        for (MechanismSpec spec : List.of(stationary, piston)) {
+            assertEquals(origin, spec.initialPosition());
+            assertEquals(Direction.NORTH, spec.initialDirection());
+            assertEquals(1, spec.length());
+            assertEquals(1, spec.initialLength());
+            assertEquals(tape, spec.tape());
+            assertEquals(ArmCombination.DEFAULT, spec.combination());
+            assertThrows(NullPointerException.class, () -> spec.supportsInstruction(null));
+            assertThrows(IllegalArgumentException.class, () -> spec.instructionAt(-1));
+        }
+        assertEquals(1, view.length());
+        assertEquals(ArmCombination.DEFAULT, view.combination());
+        assertEquals(1, ArmCombination.DEFAULT.code());
+        for (Instruction instruction : Instruction.values()) {
+            boolean isPistonInstruction = instruction == Instruction.EXTEND_PISTON
+                    || instruction == Instruction.RETRACT_PISTON;
+            assertEquals(!isPistonInstruction, stationary.supportsInstruction(instruction));
+            assertTrue(piston.supportsInstruction(instruction));
+        }
+
+        // 原有定长构造形式归静态臂；活塞的显式长度和字符串入口不接受组合。
         ArmCombination diagonal = new ArmCombination(0x80);
-        assertEquals(ArmCombination.DEFAULT,
-                new MechanismSpec(origin, Direction.NORTH, "f", 2).combination());
-        assertEquals(ArmCombination.DEFAULT,
-                new MechanismSpec(origin, Direction.NORTH, tape, 2).combination());
-        assertEquals(ArmCombination.DEFAULT,
-                new MechanismView(origin, Direction.NORTH, true, 3).combination());
-        assertEquals(1, new MechanismSpec(origin, Direction.NORTH, diagonal, tape).length());
-        assertEquals(1, new MechanismSpec(origin, Direction.NORTH, diagonal, "f").length());
-        MechanismSpec stringSpec = new MechanismSpec(origin, Direction.NORTH, 2, diagonal, "f");
-        assertEquals(diagonal, stringSpec.combination());
-        assertEquals(2, stringSpec.length());
-        assertEquals(InstructionTape.Playback.LOOPING, stringSpec.tape().playback());
-        assertEquals(Instruction.GRAB, stringSpec.tape().instructionAt(0));
-        assertEquals(Instruction.GRAB, stringSpec.tape().instructionAt(1));
+        assertEquals(1, new StationarySpec(origin, Direction.NORTH, diagonal, tape).length());
+        assertEquals(1, new StationarySpec(origin, Direction.NORTH, diagonal, "f").length());
+        assertEquals(diagonal, new StationarySpec(origin, Direction.NORTH, 0x80, "f").combination());
+        assertEquals(2, new StationarySpec(origin, Direction.NORTH, tape, 2).length());
+        assertEquals(2, new PistonSpec(origin, Direction.NORTH, tape, 2).length());
+        assertEquals(2, new PistonSpec(origin, Direction.NORTH, "f", 2).length());
+        for (MechanismSpec stringSpec : List.of(
+                new StationarySpec(origin, Direction.NORTH, 2, diagonal, "f"),
+                new StationarySpec(origin, Direction.NORTH, "f", 2),
+                new StationarySpec(origin, Direction.NORTH, "f"),
+                new PistonSpec(origin, Direction.NORTH, 2, "f"),
+                new PistonSpec(origin, Direction.NORTH, "f"))) {
+            assertEquals(InstructionTape.Playback.LOOPING, stringSpec.tape().playback());
+            assertEquals(Instruction.GRAB, stringSpec.instructionAt(0));
+            assertEquals(Instruction.GRAB, stringSpec.instructionAt(1));
+        }
         assertEquals(new GridPoint(-2, -2),
                 new MechanismView(origin, Direction.NORTH, 2, diagonal, false).grabPosition());
-        assertEquals(2, new MechanismSpec(
-                new GridPoint(0, 0), Direction.NORTH, tape, 2).length());
-        assertEquals(3, new MechanismView(
-                new GridPoint(0, 0), Direction.NORTH, true, 3).length());
+        assertEquals(3, new MechanismView(origin, Direction.NORTH, true, 3).length());
 
-        assertThrows(IllegalArgumentException.class, () -> new MechanismSpec(
-                new GridPoint(0, 0), Direction.NORTH, 0, tape));
-        assertThrows(IllegalArgumentException.class, () -> new MechanismSpec(
-                new GridPoint(0, 0), Direction.NORTH, 4, tape));
-        assertThrows(IllegalArgumentException.class, () -> new MechanismView(
-                new GridPoint(0, 0), Direction.NORTH, 0, false));
-        assertThrows(IllegalArgumentException.class, () -> new MechanismView(
-                new GridPoint(0, 0), Direction.NORTH, 4, false));
+        for (int invalidLength : new int[] {0, 4}) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> new StationarySpec(origin, Direction.NORTH, invalidLength, tape));
+            assertThrows(IllegalArgumentException.class,
+                    () -> new PistonSpec(origin, Direction.NORTH, invalidLength, tape));
+            assertThrows(IllegalArgumentException.class,
+                    () -> new MechanismView(origin, Direction.NORTH, invalidLength, false));
+        }
+        assertThrows(NullPointerException.class, () -> new StationarySpec(null, Direction.NORTH, tape));
+        assertThrows(NullPointerException.class, () -> new PistonSpec(null, Direction.NORTH, tape));
+        assertThrows(NullPointerException.class, () -> new StationarySpec(origin, null, tape));
+        assertThrows(NullPointerException.class, () -> new PistonSpec(origin, null, tape));
+        assertThrows(NullPointerException.class,
+                () -> new StationarySpec(origin, Direction.NORTH, (InstructionTape) null));
+        assertThrows(NullPointerException.class,
+                () -> new PistonSpec(origin, Direction.NORTH, (InstructionTape) null));
+        assertThrows(NullPointerException.class,
+                () -> new StationarySpec(origin, Direction.NORTH, (String) null));
+        assertThrows(NullPointerException.class,
+                () -> new PistonSpec(origin, Direction.NORTH, (String) null));
+        assertThrows(NullPointerException.class,
+                () -> new StationarySpec(origin, Direction.NORTH, (ArmCombination) null, tape));
+
+        // 不支持的指令只映射为等待，绝不删除周期或改变单次/循环播放的起点与节拍。
+        InstructionTape delayed = InstructionTape.parse("wsf", 4, InstructionTape.Playback.ONCE);
+        MechanismSpec delayedStationary = new StationarySpec(origin, Direction.NORTH, delayed);
+        MechanismSpec delayedPiston = new PistonSpec(origin, Direction.NORTH, delayed);
+        assertEquals(Instruction.WAIT, delayedStationary.instructionAt(3));
+        assertEquals(Instruction.EXTEND_PISTON, delayedStationary.tape().instructionAt(4));
+        assertEquals(Instruction.WAIT, delayedStationary.instructionAt(4));
+        assertEquals(Instruction.WAIT, delayedStationary.instructionAt(5));
+        assertEquals(Instruction.GRAB, delayedStationary.instructionAt(6));
+        assertEquals(Instruction.WAIT, delayedStationary.instructionAt(7));
+        assertEquals(Instruction.EXTEND_PISTON, delayedPiston.instructionAt(4));
+        assertEquals(Instruction.RETRACT_PISTON, delayedPiston.instructionAt(5));
+        MechanismSpec looping = new StationarySpec(origin, Direction.NORTH,
+                InstructionTape.parse("wsf", 2, InstructionTape.Playback.LOOPING));
+        assertEquals(Instruction.WAIT, looping.instructionAt(1));
+        assertEquals(Instruction.WAIT, looping.instructionAt(2));
+        assertEquals(Instruction.GRAB, looping.instructionAt(4));
+        assertEquals(Instruction.WAIT, looping.instructionAt(5));
+        assertEquals(Instruction.GRAB, looping.instructionAt(7));
+
+        // 由 record 迁为基类后保留值语义，诊断名称随具体类型更新；相同状态的不同机构类型不相等。
+        assertEquals(stationary, new StationarySpec(origin, Direction.NORTH, tape));
+        assertEquals(stationary.hashCode(), new StationarySpec(origin, Direction.NORTH, tape).hashCode());
+        assertEquals(piston, new PistonSpec(origin, Direction.NORTH, tape));
+        assertEquals(piston.hashCode(), new PistonSpec(origin, Direction.NORTH, tape).hashCode());
+        assertNotEquals(stationary, piston);
+        assertNotEquals(piston, stationary);
+        assertNotEquals(stationary, new StationarySpec(origin, Direction.NORTH, diagonal, tape));
+        assertNotEquals(stationary, new StationarySpec(origin, Direction.NORTH, 2, tape));
+        assertNotEquals(stationary, new StationarySpec(origin, Direction.EAST, tape));
+        assertNotEquals(stationary, new StationarySpec(new GridPoint(1, 0), Direction.NORTH, tape));
+        assertNotEquals(stationary, new StationarySpec(origin, Direction.NORTH, InstructionTape.once("f")));
+        assertTrue(stationary.toString().startsWith("StationarySpec["));
+        assertTrue(piston.toString().startsWith("PistonSpec["));
     }
 
     @Test
@@ -92,12 +167,50 @@ class MechanismMotionTest {
         assertEquals(new GridPoint(1, -1), branches.worldOffset(Direction.NORTH, 4));
         GridPoint base = new GridPoint(10, -7);
         assertEquals(List.of(new GridPoint(12, -7), new GridPoint(12, -5), new GridPoint(12, -9)),
-                branches.grabPositions(base, Direction.EAST, 2));
+                branches.enabledGrabPositions(base, Direction.EAST, 2));
         assertEquals(List.of(new GridPoint(10, -4), new GridPoint(7, -4), new GridPoint(13, -4)),
-                branches.grabPositions(base, Direction.SOUTH, 3));
+                branches.enabledGrabPositions(base, Direction.SOUTH, 3));
         assertEquals(new GridPoint(11, -8), branches.grabPosition(base, Direction.NORTH, 1, 4));
         assertEquals(List.of(new GridPoint(10, -8), new GridPoint(11, -7), new GridPoint(10, -6)),
-                new ArmCombination(0x0e).grabPositions(base, Direction.WEST, 1));
+                new ArmCombination(0x0e).enabledGrabPositions(base, Direction.WEST, 1));
+        // 数组 API 必须保留真实 bit 下标，并且只旋转一次；手写四朝向坐标避免同源几何错误。
+        Direction[] facings = {Direction.EAST, Direction.SOUTH, Direction.WEST, Direction.NORTH};
+        GridPoint[][] expectedOffsets = {
+                {new GridPoint(1, 0), new GridPoint(1, 1), new GridPoint(1, -1)},
+                {new GridPoint(0, 1), new GridPoint(-1, 1), new GridPoint(1, 1)},
+                {new GridPoint(-1, 0), new GridPoint(-1, -1), new GridPoint(-1, 1)},
+                {new GridPoint(0, -1), new GridPoint(1, -1), new GridPoint(-1, -1)}};
+        GridPoint[][] expectedGrabs = {
+                {new GridPoint(12, -7), new GridPoint(12, -5), new GridPoint(12, -9)},
+                {new GridPoint(10, -5), new GridPoint(8, -5), new GridPoint(12, -5)},
+                {new GridPoint(8, -7), new GridPoint(8, -9), new GridPoint(8, -5)},
+                {new GridPoint(10, -9), new GridPoint(12, -9), new GridPoint(8, -9)}};
+        for (int facing = 0; facing < facings.length; facing++) {
+            GridPoint[] offsets = branches.worldOffset(facings[facing]);
+            GridPoint[] grabs = branches.grabPosArray(base, facings[facing], 2);
+            assertEquals(8, offsets.length);
+            assertEquals(8, grabs.length);
+            int enabled = 0;
+            for (int bit = 0; bit < 8; bit++) {
+                if ((branches.code() & (1 << bit)) == 0) {
+                    assertNull(offsets[bit]);
+                    assertNull(grabs[bit]);
+                } else {
+                    assertEquals(expectedOffsets[facing][enabled], offsets[bit]);
+                    assertEquals(expectedGrabs[facing][enabled++], grabs[bit]);
+                }
+            }
+            MechanismView view = new MechanismView(base, facings[facing], 2, branches, false);
+            org.junit.jupiter.api.Assertions.assertArrayEquals(grabs, view.grabPosArray());
+            org.junit.jupiter.api.Assertions.assertArrayEquals(offsets, view.worldOffset());
+            assertEquals(List.of(expectedGrabs[facing]), view.grabPositions());
+        }
+        for (int invalidLength : new int[] {0, 4}) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> branches.grabPosArray(base, Direction.NORTH, invalidLength));
+        }
+        assertThrows(ArithmeticException.class, () -> branches.grabPosArray(
+                new GridPoint(Long.MAX_VALUE, 0), Direction.EAST, 1));
         assertThrows(IllegalArgumentException.class, () -> branches.localOffset(1));
         assertThrows(IndexOutOfBoundsException.class, () -> branches.localOffset(-1));
         assertThrows(IndexOutOfBoundsException.class, () -> branches.localOffset(8));
@@ -111,44 +224,49 @@ class MechanismMotionTest {
 
     @Test
     void pistonLengthChangesWithinBoundsAndResetRestoresIt() {
-        OrthogonalSimulator simulator = simulator(new MechanismSpec(
-                new GridPoint(4, 5),
-                Direction.WEST,
-                2,
-                InstructionTape.once("wwsss")));
+        // 同一指令带显式区分类型：活塞在上下界截断，静态臂在中间长度也忽略伸缩且不压缩周期。
+        InstructionTape tape = InstructionTape.once("wwsssd");
+        OrthogonalSimulator piston = simulator(new PistonSpec(
+                new GridPoint(4, 5), Direction.WEST, 2, tape));
+        OrthogonalSimulator stationary = simulator(new StationarySpec(
+                new GridPoint(4, 5), Direction.WEST, 2, tape));
 
-        simulator.step();
-        assertMechanism(simulator, 3, new GridPoint(4, 5), Direction.WEST);
-        simulator.step();
-        assertMechanism(simulator, 3, new GridPoint(4, 5), Direction.WEST);
-        simulator.step();
-        assertMechanism(simulator, 2, new GridPoint(4, 5), Direction.WEST);
-        simulator.step();
-        assertMechanism(simulator, 1, new GridPoint(4, 5), Direction.WEST);
-        simulator.step();
-        assertMechanism(simulator, 1, new GridPoint(4, 5), Direction.WEST);
+        for (int expectedLength : new int[] {3, 3, 2, 1, 1}) {
+            piston.step();
+            stationary.step();
+            assertMechanism(piston, expectedLength, new GridPoint(4, 5), Direction.WEST);
+            assertMechanism(stationary, 2, new GridPoint(4, 5), Direction.WEST);
+            assertFalse(stationary.isHalted());
+        }
+        assertEquals(5, stationary.cycle());
+        piston.step();
+        stationary.step();
+        assertMechanism(piston, 1, new GridPoint(4, 5), Direction.NORTH);
+        assertMechanism(stationary, 2, new GridPoint(4, 5), Direction.NORTH);
 
-        simulator.reset();
-        assertMechanism(simulator, 2, new GridPoint(4, 5), Direction.WEST);
+        piston.reset();
+        stationary.reset();
+        assertMechanism(piston, 2, new GridPoint(4, 5), Direction.WEST);
+        assertMechanism(stationary, 2, new GridPoint(4, 5), Direction.WEST);
     }
 
     @Test
     void mechanismQueriesAndChecksumsIncludeLength() {
         // 查询同时保留长度和真实组合；改变组合但保持其他状态一致时，校验和必须区分。
-        MechanismSpec extended = new MechanismSpec(
+        MechanismSpec extended = new StationarySpec(
                 new GridPoint(0, 0),
                 Direction.NORTH,
                 2,
                 InstructionTape.empty());
         OrthogonalSimulator simulator = simulator(extended);
-        OrthogonalSimulator legacyLength = simulator(new MechanismSpec(
+        OrthogonalSimulator legacyLength = simulator(new StationarySpec(
                 new GridPoint(0, 0), Direction.NORTH, InstructionTape.empty()));
 
         assertEquals(2, simulator.mechanism(0).length());
         assertEquals(2, simulator.mechanisms().get(0).length());
         assertNotEquals(legacyLength.checksum(), simulator.checksum());
         ArmCombination combination = new ArmCombination(0x81);
-        OrthogonalSimulator combined = simulator(new MechanismSpec(
+        OrthogonalSimulator combined = simulator(new StationarySpec(
                 new GridPoint(0, 0), Direction.NORTH, 2, combination, InstructionTape.empty()));
         assertEquals(combination, combined.mechanism(0).combination());
         assertEquals(combination, combined.mechanisms().get(0).combination());
@@ -166,44 +284,82 @@ class MechanismMotionTest {
 
     @Test
     void pistonExtensionAndRetractionCarryTheGrabbedMolecule() {
-        // 正交与对角分支分别抓住独立分子；伸缩对角臂时两个坐标分量必须一起变化。
-        MechanismSpec piston = new MechanismSpec(
-                new GridPoint(0, 0),
-                Direction.EAST,
-                2,
-                new ArmCombination(0x11),
-                InstructionTape.once("fws"));
+        // 单臂活塞抓住连通双原子分子，两实体必须整体沿同一轴向伸缩；预览与实际位移一致。
+        Atom grabbed = sampleAtom().withBond(Direction.SOUTH, 2);
+        Atom attached = blockerAtom().withBond(Direction.NORTH, 2);
+        MechanismSpec piston = new PistonSpec(
+                new GridPoint(0, 0), Direction.EAST, 2, InstructionTape.once("fws"));
         OrthogonalSimulator simulator = motionSimulator(List.of(piston), List.of(),
-                InputSpec.single(new GridPoint(2, 0), sampleAtom()),
-                InputSpec.single(new GridPoint(2, 2), blockerAtom()),
-                InputSpec.single(new GridPoint(10, 10), Atom.of(9)));
+                InputSpec.of(AtomPlacement.of(2, 0, grabbed), AtomPlacement.of(2, 1, attached)));
 
         simulator.step();
         assertTrue(simulator.mechanism(0).grabbing());
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(2, 0)));
+        List<Long> held = simulator.heldEntities(0);
+        assertEquals(2, held.size());
+        assertEquals(java.util.Set.of(
+                        EntityIntent.move(simulator.entityAt(new GridPoint(2, 0)), 0, 1, 0),
+                        EntityIntent.move(simulator.entityAt(new GridPoint(2, 1)), 0, 1, 0)),
+                java.util.Set.copyOf(simulator.motionIntents(0)));
 
         simulator.step();
         assertEquals(3, simulator.mechanism(0).length());
         assertNull(simulator.atomAt(new GridPoint(2, 0)));
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(3, 0)));
-        assertNull(simulator.atomAt(new GridPoint(2, 2)));
-        assertEquals(blockerAtom(), simulator.atomAt(new GridPoint(3, 3)));
-        assertEquals(2, simulator.heldEntities(0).size());
+        assertNull(simulator.atomAt(new GridPoint(2, 1)));
+        assertEquals(grabbed, simulator.atomAt(new GridPoint(3, 0)));
+        assertEquals(attached, simulator.atomAt(new GridPoint(3, 1)));
+        assertEquals(held, simulator.heldEntities(0));
+        assertEquals(java.util.Set.of(
+                        EntityIntent.move(simulator.entityAt(new GridPoint(3, 0)), 0, -1, 0),
+                        EntityIntent.move(simulator.entityAt(new GridPoint(3, 1)), 0, -1, 0)),
+                java.util.Set.copyOf(simulator.motionIntents(0)));
 
         simulator.step();
         assertEquals(2, simulator.mechanism(0).length());
-        assertEquals(sampleAtom(), simulator.atomAt(new GridPoint(2, 0)));
+        assertEquals(grabbed, simulator.atomAt(new GridPoint(2, 0)));
+        assertEquals(attached, simulator.atomAt(new GridPoint(2, 1)));
         assertNull(simulator.atomAt(new GridPoint(3, 0)));
-        assertEquals(blockerAtom(), simulator.atomAt(new GridPoint(2, 2)));
-        assertNull(simulator.atomAt(new GridPoint(3, 3)));
-        assertEquals(1, simulator.grabsAt(new GridPoint(2, 2)));
+        assertNull(simulator.atomAt(new GridPoint(3, 1)));
+        assertEquals(1, simulator.grabsAt(new GridPoint(2, 0)));
+        assertEquals(1, simulator.grabsAt(new GridPoint(2, 1)));
+        assertEquals(held, simulator.heldEntities(0));
         assertFalse(simulator.isHalted());
+
+        // 多臂能力归静态机械；长度2并未触及边界，两条伸缩指令也只能提交静止约束。
+        MechanismSpec stationary = new StationarySpec(new GridPoint(0, 0), Direction.EAST,
+                2, new ArmCombination(0x11), InstructionTape.once("fwsr"));
+        OrthogonalSimulator fixed = motionSimulator(List.of(stationary), List.of(),
+                InputSpec.single(new GridPoint(2, 0), sampleAtom()),
+                InputSpec.single(new GridPoint(2, 2), blockerAtom()));
+        fixed.step();
+        List<Long> fixedHeld = fixed.heldEntities(0);
+        for (int ignoredInstruction = 0; ignoredInstruction < 2; ignoredInstruction++) {
+            long checksum = fixed.checksum();
+            assertEquals(2, fixed.motionIntents(0).size());
+            assertTrue(fixed.motionIntents(0).stream()
+                    .allMatch(intent -> intent.kind() == EntityIntent.Kind.STAY));
+            assertEquals(checksum, fixed.checksum());
+            fixed.step();
+            assertEquals(2, fixed.mechanism(0).length());
+            assertEquals(sampleAtom(), fixed.atomAt(new GridPoint(2, 0)));
+            assertEquals(blockerAtom(), fixed.atomAt(new GridPoint(2, 2)));
+            assertEquals(1, fixed.grabsAt(new GridPoint(2, 0)));
+            assertEquals(1, fixed.grabsAt(new GridPoint(2, 2)));
+            assertEquals(fixedHeld, fixed.heldEntities(0));
+            assertFalse(fixed.isHalted());
+        }
+        assertEquals(3, fixed.cycle());
+        assertTrue(fixed.mechanism(0).grabbing());
+        assertTrue(fixed.motionIntents(0).isEmpty());
+        fixed.step();
+        assertTrue(fixed.heldEntities(0).isEmpty());
+        assertEquals(0, fixed.grabsAt(new GridPoint(2, 0)));
+        assertEquals(0, fixed.grabsAt(new GridPoint(2, 2)));
     }
 
     @Test
     void baseRotationCarriesEveryBranchAroundOneCommonCenter() {
         // a/d 的共同旋转中心是基座，与 q/e 的逐分支抓点中心不同；往返旋转后应还原。
-        MechanismSpec arm = new MechanismSpec(new GridPoint(0, 0), Direction.EAST, 2,
+        MechanismSpec arm = new StationarySpec(new GridPoint(0, 0), Direction.EAST, 2,
                 new ArmCombination(0x11), InstructionTape.once("fda"));
         OrthogonalSimulator simulator = motionSimulator(List.of(arm), List.of(),
                 InputSpec.single(new GridPoint(2, 0), sampleAtom()),
@@ -225,10 +381,11 @@ class MechanismMotionTest {
 
     @Test
     void motionIntentQueriesAreImmutableSideEffectFreeSnapshotsOfTheNextInstruction() {
-        // 读接口只解释当前已提交态的下一条指令：不抓取、不推进，也不把 RELEASE 暴露为运动。
-        MechanismSpec arm = new MechanismSpec(new GridPoint(0, 0), Direction.EAST, 1,
-                new ArmCombination(0x11), InstructionTape.once("f.wwer"));
-        OrthogonalSimulator simulator = motionSimulator(List.of(arm), List.of(),
+        // 定长多臂以轨道平移验证共享运动，再验证各抓点的枢轴中心；读接口不抓取、不推进。
+        MechanismSpec arm = new StationarySpec(new GridPoint(0, 0), Direction.EAST, 1,
+                new ArmCombination(0x11), InstructionTape.once("f.gger"));
+        TrackSpec track = TrackBuilder.start(0, 0).north().north().noLoop();
+        OrthogonalSimulator simulator = motionSimulator(List.of(arm), List.of(track),
                 InputSpec.single(new GridPoint(1, 0), sampleAtom()),
                 InputSpec.single(new GridPoint(1, 1), blockerAtom()),
                 InputSpec.single(new GridPoint(10, 10), Atom.of(9)));
@@ -247,23 +404,24 @@ class MechanismMotionTest {
         assertThrows(UnsupportedOperationException.class, stays::clear);
         simulator.step();
         List<EntityIntent> moves = simulator.motionIntents(0);
-        assertEquals(List.of(EntityIntent.move(simulator.entityAt(new GridPoint(1, 0)), 0, 1, 0),
-                        EntityIntent.move(simulator.entityAt(new GridPoint(1, 1)), 0, 1, 1)), moves);
+        assertEquals(List.of(EntityIntent.move(simulator.entityAt(new GridPoint(1, 0)), 0, 0, -1),
+                        EntityIntent.move(simulator.entityAt(new GridPoint(1, 1)), 0, 0, -1)), moves);
         assertTrue(stays.stream().allMatch(intent -> intent.kind() == EntityIntent.Kind.STAY));
         assertThrows(UnsupportedOperationException.class, moves::clear);
         simulator.run(2);
         List<EntityIntent> rotations = simulator.motionIntents(0);
-        assertEquals(List.of(EntityIntent.rotate(simulator.entityAt(new GridPoint(3, 0)), 0,
-                                new GridPoint(3, 0), 1),
-                        EntityIntent.rotate(simulator.entityAt(new GridPoint(3, 3)), 0,
-                                new GridPoint(3, 3), 1)), rotations);
+        assertEquals(List.of(EntityIntent.rotate(simulator.entityAt(new GridPoint(1, -2)), 0,
+                                new GridPoint(1, -2), 1),
+                        EntityIntent.rotate(simulator.entityAt(new GridPoint(1, -1)), 0,
+                                new GridPoint(1, -1), 1)), rotations);
+        assertEquals(1, simulator.mechanism(0).length());
         simulator.step();
         assertTrue(simulator.motionIntents(0).isEmpty());
         assertEquals(2, simulator.heldEntities(0).size());
         simulator.step();
         assertTrue(simulator.heldEntities(0).isEmpty());
         assertTrue(simulator.motionIntents(0).isEmpty());
-        assertEquals(0, simulator.grabsAt(new GridPoint(3, 3)));
+        assertEquals(0, simulator.grabsAt(new GridPoint(1, -1)));
         assertFalse(simulator.isHalted());
     }
 
@@ -272,7 +430,7 @@ class MechanismMotionTest {
         // 基座走正交再走对角轨道；不同分支的分子都只接受相同平移，不随轨道拐弯转向。
         Atom grabbed = sampleAtom().withBond(Direction.WEST, 2);
         Atom attached = blockerAtom().withBond(Direction.EAST, 2);
-        MechanismSpec arm = new MechanismSpec(
+        MechanismSpec arm = new StationarySpec(
                 new GridPoint(0, 1),
                 Direction.NORTH,
                 new ArmCombination(0x11),
@@ -308,7 +466,7 @@ class MechanismMotionTest {
         GridPoint base = new GridPoint(Long.MAX_VALUE - 1, 1);
         GridPoint atomPosition = new GridPoint(Long.MAX_VALUE, 1);
         GridPoint otherPosition = new GridPoint(Long.MAX_VALUE - 2, 1);
-        MechanismSpec arm = new MechanismSpec(
+        MechanismSpec arm = new StationarySpec(
                 base, Direction.EAST, new ArmCombination(0x05), InstructionTape.once("fg"));
         TrackSpec track = new TrackSpec(base, new GridPoint(Long.MAX_VALUE, 0));
         OrthogonalSimulator simulator = motionSimulator(List.of(arm), List.of(track),
@@ -330,21 +488,21 @@ class MechanismMotionTest {
 
     @Test
     void pistonBoundaryInstructionsDoNotMoveHeldMolecules() {
-        // 到达统一长度上下界后，正交和对角分支都必须保持原位及持有计数。
+        // 活塞在统一长度上下界都不能移动单臂持有的连通分子，抓握计数和完整键结构保持不变。
         OrthogonalSimulator maximum = boundarySimulator(3, 'w');
         OrthogonalSimulator minimum = boundarySimulator(1, 's');
 
         assertEquals(3, maximum.mechanism(0).length());
-        assertEquals(sampleAtom(), maximum.atomAt(new GridPoint(3, 0)));
+        assertEquals(sampleAtom().withBond(Direction.SOUTH, 2), maximum.atomAt(new GridPoint(3, 0)));
         assertEquals(1, maximum.grabsAt(new GridPoint(3, 0)));
-        assertEquals(blockerAtom(), maximum.atomAt(new GridPoint(3, 3)));
-        assertEquals(1, maximum.grabsAt(new GridPoint(3, 3)));
+        assertEquals(blockerAtom().withBond(Direction.NORTH, 2), maximum.atomAt(new GridPoint(3, 1)));
+        assertEquals(1, maximum.grabsAt(new GridPoint(3, 1)));
         assertFalse(maximum.isHalted());
 
         assertEquals(1, minimum.mechanism(0).length());
-        assertEquals(sampleAtom(), minimum.atomAt(new GridPoint(1, 0)));
+        assertEquals(sampleAtom().withBond(Direction.SOUTH, 2), minimum.atomAt(new GridPoint(1, 0)));
         assertEquals(1, minimum.grabsAt(new GridPoint(1, 0)));
-        assertEquals(blockerAtom(), minimum.atomAt(new GridPoint(1, 1)));
+        assertEquals(blockerAtom().withBond(Direction.NORTH, 2), minimum.atomAt(new GridPoint(1, 1)));
         assertEquals(1, minimum.grabsAt(new GridPoint(1, 1)));
         assertFalse(minimum.isHalted());
     }
@@ -352,7 +510,7 @@ class MechanismMotionTest {
     @Test
     void blockedExtensionDoesNotCommitLengthOrMoleculeMotion() {
         // 被抓原子和挡路原子是两个合法独立分子；目标占用应使长度与坐标一起回滚。
-        MechanismSpec piston = new MechanismSpec(
+        MechanismSpec piston = new PistonSpec(
                 new GridPoint(0, 0),
                 Direction.EAST,
                 1,
@@ -379,12 +537,13 @@ class MechanismMotionTest {
 
     @Test
     void conflictingPistonMovesDoNotCommitEitherLength() {
-        MechanismSpec east = new MechanismSpec(
+        // 两个默认单臂活塞共持同一实体，相向伸展冲突必须同时回滚两者长度和实体位置。
+        MechanismSpec east = new PistonSpec(
                 new GridPoint(0, 0),
                 Direction.EAST,
                 1,
                 InstructionTape.once("fw"));
-        MechanismSpec west = new MechanismSpec(
+        MechanismSpec west = new PistonSpec(
                 new GridPoint(2, 0),
                 Direction.WEST,
                 1,
@@ -434,7 +593,7 @@ class MechanismMotionTest {
         // 一次性放置连通双原子分子，排除补料后验证自转使用伸长后的抓点而不是初始长度。
         Atom grabbed = sampleAtom().withBond(Direction.SOUTH, 2);
         Atom attached = blockerAtom().withBond(Direction.NORTH, 2);
-        MechanismSpec piston = new MechanismSpec(
+        MechanismSpec piston = new PistonSpec(
                 new GridPoint(0, 0),
                 Direction.EAST,
                 1,
@@ -456,7 +615,8 @@ class MechanismMotionTest {
 
     @Test
     void pivotWithoutAGrabbedMoleculeIsANoOp() {
-        OrthogonalSimulator simulator = simulator(new MechanismSpec(
+        // 静态机械仍支持枢轴旋转，但没有持有分子时不得改变基座、朝向或固定臂长。
+        OrthogonalSimulator simulator = simulator(new StationarySpec(
                 new GridPoint(7, -4),
                 Direction.SOUTH,
                 3,
@@ -474,7 +634,7 @@ class MechanismMotionTest {
         // 分别校验两条双原子分子后一次性播种，区分分支枢轴且不让补料掩盖坐标和键向旋转。
         Atom grabbed = sampleAtom().withBond(Direction.EAST, 2);
         Atom attached = blockerAtom().withBond(Direction.WEST, 2);
-        MechanismSpec arm = new MechanismSpec(
+        MechanismSpec arm = new StationarySpec(
                 new GridPoint(0, 2),
                 Direction.NORTH,
                 2,
@@ -488,16 +648,13 @@ class MechanismMotionTest {
     }
 
     private static OrthogonalSimulator boundarySimulator(int length, char instruction) {
-        // 两支各持有一个独立分子；一次性初态不声明生产器，长度边界指令应只产生静止约束。
-        MechanismSpec piston = new MechanismSpec(
-                new GridPoint(0, 0),
-                Direction.EAST,
-                length,
-                new ArmCombination(0x11),
-                InstructionTape.once("f" + instruction));
+        // 单臂持有连通双原子分子，边界指令对两实体都必须只产生静止约束。
+        MechanismSpec piston = new PistonSpec(new GridPoint(0, 0), Direction.EAST,
+                length, InstructionTape.once("f" + instruction));
         OrthogonalSimulator simulator = motionSimulator(List.of(piston), List.of(),
-                InputSpec.single(new GridPoint(length, 0), sampleAtom()),
-                InputSpec.single(new GridPoint(length, length), blockerAtom()),
+                InputSpec.of(
+                        AtomPlacement.of(length, 0, sampleAtom().withBond(Direction.SOUTH, 2)),
+                        AtomPlacement.of(length, 1, blockerAtom().withBond(Direction.NORTH, 2))),
                 InputSpec.single(new GridPoint(10, 10), Atom.of(9)));
         simulator.step();
         assertEquals(2, simulator.motionIntents(0).size());
@@ -549,7 +706,7 @@ class MechanismMotionTest {
     private static OrthogonalSimulator motionSimulator(
             List<MechanismSpec> arms, List<TrackSpec> tracks, InputSpec... molecules) {
         // 每个参数仍经生产校验为合法单分子，但这里只描述一次性棋盘初态，不声明持续生产的 I/O。
-        // 同步棋盘、双向实体索引和编号，再清空分子缓存，避免补料干扰往返运动与空格断言。
+        // 同步棋盘、双向实体索引和编号；连通关系直接读取当前棋盘，避免补料干扰往返运动与空格断言。
         new SimulationPlan(arms, tracks, List.of(molecules), List.of(), 1);
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(arms, tracks));
         simulator.init();
@@ -575,9 +732,6 @@ class MechanismMotionTest {
             var nextIdField = OrthogonalSimulator.class.getDeclaredField("nextEntityId");
             nextIdField.setAccessible(true);
             nextIdField.setLong(simulator, nextId);
-            var cacheField = OrthogonalSimulator.class.getDeclaredField("moleculeBfsCache");
-            cacheField.setAccessible(true);
-            ((Map<?, ?>) cacheField.get(simulator)).clear();
         } catch (ReflectiveOperationException failure) {
             throw new AssertionError("无法建立机械运动测试初态", failure);
         }

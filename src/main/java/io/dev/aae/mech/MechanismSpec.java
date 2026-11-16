@@ -5,85 +5,61 @@ import io.dev.aae.GridPoint;
 
 import java.util.Objects;
 
-/** 单个指令带驱动机构的不可变定义；按计划中的声明顺序定位。 */
-public record MechanismSpec(
-        GridPoint initialPosition,
-        Direction initialDirection,
-        int length,
-        ArmCombination combination,
-        InstructionTape tape) {
-
-    /** 兼容原有显式长度单臂构造器。 */
-    public MechanismSpec(GridPoint position, Direction direction, int length, InstructionTape tape) {
-        this(position, direction, length, ArmCombination.DEFAULT, tape);
-    }
-
-    public MechanismSpec(GridPoint position, Direction direction,
-                         ArmCombination combination, InstructionTape tape) {
-        this(position, direction, MIN_LENGTH, combination, tape);
-    }
-
-    public MechanismSpec(GridPoint position, Direction direction, int length,
-                         ArmCombination combination, String tape) {
-        this(position, direction, length, combination,
-                InstructionTape.parse(tape, 0, InstructionTape.Playback.LOOPING));
-    }
-
-    public MechanismSpec(GridPoint position, Direction direction, int combination, String tape) {
-        this(position, direction, MIN_LENGTH, new ArmCombination(combination), tape);
-    }
-
-    public MechanismSpec(GridPoint position, Direction direction,
-                         ArmCombination combination, String tape) {
-        this(position, direction, MIN_LENGTH, combination, tape);
-    }
+/** 单个指令带驱动机构的不可变基类；按计划中的声明顺序定位。 */
+public abstract sealed class MechanismSpec permits StationarySpec, PistonSpec {
 
     public static final int MIN_LENGTH = 1;
     public static final int MAX_LENGTH = 3;
 
-    /** 使用默认长度一格。 */
-    public MechanismSpec(
+    private final GridPoint initialPosition;
+    private final Direction initialDirection;
+    private final int length;
+    private final InstructionTape tape;
+
+    protected MechanismSpec(
             GridPoint initialPosition,
             Direction initialDirection,
+            int length,
             InstructionTape tape) {
-        this(initialPosition, initialDirection, MIN_LENGTH, tape);
-    }
-
-    /** 允许调用方在参数顺序末尾指定长度。 */
-    public MechanismSpec(
-            GridPoint initialPosition,
-            Direction initialDirection,
-            InstructionTape tape,
-            int length) {
-        this(initialPosition, initialDirection, length, tape);
-    }
-
-    /** 使用默认长度一格。 */
-    public MechanismSpec(
-            GridPoint initialPosition,
-            Direction initialDirection,
-            String tape) {
-        this(initialPosition, initialDirection, tape, MIN_LENGTH);
-    }
-
-    /** 使用默认长度一格。 */
-    public MechanismSpec(
-            GridPoint initialPosition,
-            Direction initialDirection,
-            String tape,
-            int length) {
-        this(initialPosition,
-                initialDirection,
-                InstructionTape.parse(tape, 0, InstructionTape.Playback.LOOPING),
-                length);
-    }
-
-    public MechanismSpec {
-        Objects.requireNonNull(initialPosition, "initialPosition");
-        Objects.requireNonNull(initialDirection, "initialDirection");
+        this.initialPosition = Objects.requireNonNull(initialPosition, "initialPosition");
+        this.initialDirection = Objects.requireNonNull(initialDirection, "initialDirection");
         validateLength(length);
-        Objects.requireNonNull(combination, "combination");
-        Objects.requireNonNull(tape, "tape");
+        this.length = length;
+        this.tape = Objects.requireNonNull(tape, "tape");
+    }
+
+    public final GridPoint initialPosition() {
+        return initialPosition;
+    }
+
+    public final Direction initialDirection() {
+        return initialDirection;
+    }
+
+    public final int length() {
+        return length;
+    }
+
+    /** 初始长度；等价于 {@link #length()}，运行态长度由模拟器单独维护。 */
+    public final int initialLength() {
+        return length;
+    }
+
+    /** 原始指令带，包含当前机构不支持的指令。 */
+    public final InstructionTape tape() {
+        return tape;
+    }
+
+    /** 由具体机构提供几何组合；基类不保存组合字段。 */
+    public abstract ArmCombination combination();
+
+    /** 是否支持指定指令；不支持的指令占用原周期但按等待处理。 */
+    public abstract boolean supportsInstruction(Instruction instruction);
+
+    /** 模拟执行及运动预览共用的有效指令；不改变原指令带的播放节拍。 */
+    public final Instruction instructionAt(long cycle) {
+        Instruction instruction = tape.instructionAt(cycle);
+        return supportsInstruction(instruction) ? instruction : Instruction.WAIT;
     }
 
     static void validateLength(int length) {
@@ -93,8 +69,31 @@ public record MechanismSpec(
         }
     }
 
-    /** 初始长度；等价于 {@link #length()}。 */
-    public int initialLength() {
-        return length;
+    @Override
+    public final boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (other == null || getClass() != other.getClass()) {
+            return false;
+        }
+        MechanismSpec spec = (MechanismSpec) other;
+        return length == spec.length
+                && initialPosition.equals(spec.initialPosition)
+                && initialDirection == spec.initialDirection
+                && tape.equals(spec.tape)
+                && combination().equals(spec.combination());
+    }
+
+    @Override
+    public final int hashCode() {
+        return Objects.hash(getClass(), initialPosition, initialDirection, length, combination(), tape);
+    }
+
+    @Override
+    public final String toString() {
+        return getClass().getSimpleName() + "[initPos=" + initialPosition
+                + ", initDir=" + initialDirection + ", len=" + length
+                + ", cmb=" + combination() + ", tape=" + tape + "]";
     }
 }

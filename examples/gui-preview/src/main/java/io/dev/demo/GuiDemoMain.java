@@ -2,6 +2,8 @@ package io.dev.demo;
 
 import io.dev.aae.mech.InstructionTape;
 import io.dev.aae.mech.MechanismSpec;
+import io.dev.aae.mech.PistonSpec;
+import io.dev.aae.mech.StationarySpec;
 
 import io.dev.aae.glyph.GlyphRegistry;
 import io.dev.aae.glyph.GlyphSpec;
@@ -45,22 +47,26 @@ public final class GuiDemoMain {
 
         return new SimulationPlan(
                 List.of(// 机械臂
-                        new MechanismSpec(point(-1, 0), Direction.WEST, "feqqer", 2),
-                        new MechanismSpec(point(0, 0), Direction.EAST, "rdfa"),
-                        new MechanismSpec(point(1, 1), Direction.WEST, "fdra"),
-                        new MechanismSpec(point(5, 0), Direction.WEST, "fgggrgfgggrg", 2),
-                        new MechanismSpec(point(6, 1), Direction.WEST, "rgfgggrgfggg", 2),
-                        new MechanismSpec(point(4, 0), Direction.WEST, "ggrgfgggrgfg", 2),
-                        // 正向与对角分支分别携带独立原子，共享伸缩，避免同分子伸缩冲突。
-                        new MechanismSpec(point(-3, 2), Direction.EAST, 0x11, "fwrs")
+                        new StationarySpec(point(-1, 0), Direction.WEST, "feqqer", 2),
+                        new StationarySpec(point(0, 0), Direction.EAST, "rdfa"),
+                        new StationarySpec(point(1, 1), Direction.WEST, "fdra"),
+                        new StationarySpec(point(5, 0), Direction.WEST, "fgggrgfgggrg", 2),
+                        new StationarySpec(point(6, 1), Direction.WEST, "rgfgggrgfggg", 2),
+                        new StationarySpec(point(4, 0), Direction.WEST, "ggrgfgggrgfg", 2),
+                        // 固定多臂共享抓放与基座旋转，两个抓点分别送往下方输出。
+                        new StationarySpec(point(-3, 2), Direction.EAST, 0x11, "fdra"),
+                        // 独立单臂活塞只在左侧伸缩，与多臂及原有机构的运动范围分离。
+                        new PistonSpec(point(-6, 2), Direction.EAST, "fwrs")
                 ),
                 List.of(track),
                 List.of(input1, input2, input3,
                         InputSpec.of(AtomPlacement.of(-2, 2, OMAtom.water())),
-                        InputSpec.of(AtomPlacement.of(-2, 3, OMAtom.earth()))),
+                        InputSpec.of(AtomPlacement.of(-2, 3, OMAtom.earth())),
+                        InputSpec.of(AtomPlacement.of(-5, 2, OMAtom.water()))),
                 List.of(output,
-                        OutputSpec.of(AtomPlacement.of(-1, 2, OMAtom.water())),
-                        OutputSpec.of(AtomPlacement.of(-1, 4, OMAtom.earth()))),
+                        OutputSpec.of(AtomPlacement.of(-3, 3, OMAtom.water())),
+                        OutputSpec.of(AtomPlacement.of(-4, 3, OMAtom.earth())),
+                        OutputSpec.of(AtomPlacement.of(-4, 2, OMAtom.water()))),
                 List.of(calcification, bonder),
                 5);
     }

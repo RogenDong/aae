@@ -2,6 +2,8 @@ package io.dev.aae;
 
 import io.dev.aae.mech.InstructionTape;
 import io.dev.aae.mech.MechanismSpec;
+import io.dev.aae.mech.PistonSpec;
+import io.dev.aae.mech.StationarySpec;
 
 import io.dev.aae.glyph.GlyphDefinition;
 import io.dev.aae.glyph.GlyphRegistry;
@@ -23,8 +25,11 @@ class SimulationPlanTest {
 
     @Test
     void mechanismsKeepDeclarationOrderInAnImmutableSnapshot() {
-        MechanismSpec first = mechanism(0, 0);
-        MechanismSpec second = mechanism(1, 0);
+        // 基类列表混合定长臂与活塞，声明顺序不因具体子类而改变，源列表后续修改也不能影响快照。
+        MechanismSpec first = new StationarySpec(
+                new GridPoint(0, 0), Direction.NORTH, InstructionTape.empty());
+        MechanismSpec second = new PistonSpec(
+                new GridPoint(1, 0), Direction.NORTH, InstructionTape.empty());
         List<MechanismSpec> definitions = new ArrayList<>(List.of(first, second));
         SimulationPlan plan = new SimulationPlan(definitions);
         definitions.clear();
@@ -151,13 +156,6 @@ class SimulationPlanTest {
             assertTrue(overflow.getMessage().contains(direction.name()));
             assertTrue(overflow.getMessage().contains("overflows"));
         }
-    }
-
-    private static MechanismSpec mechanism(long x, long y) {
-        return new MechanismSpec(
-                new GridPoint(x, y),
-                Direction.NORTH,
-                InstructionTape.empty());
     }
 
     private static Atom sampleAtom() {

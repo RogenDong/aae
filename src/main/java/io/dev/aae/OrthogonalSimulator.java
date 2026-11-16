@@ -85,8 +85,6 @@ public final class OrthogonalSimulator {
     private final Map<Long, Integer> grabCounts = new LinkedHashMap<>();
     /** 机构级共享持有集合：同一实体只计一次抓取，顺序由首次命中决定。 */
     private final List<Set<Long>> heldByMechanism;
-    /** 分子 BFS 搜索缓存 */
-    private final Map<GridPoint, Molecule> moleculeBfsCache = new HashMap<>();
     private final long[] outputCounts;
 
     /** 符文运行态：实例状态、执行上下文与半周期棋盘视图都由它持有。 */
@@ -176,7 +174,6 @@ public final class OrthogonalSimulator {
         heldByMechanism.forEach(Set::clear);
         Arrays.fill(grabbed, false);
         Arrays.fill(nextGrabbed, false);
-        moleculeBfsCache.clear();
         Arrays.fill(outputCounts, 0);
         nextEntityId = 1;
         List<MechanismSpec> mechanisms = plan.mechanisms();
@@ -210,7 +207,7 @@ public final class OrthogonalSimulator {
             List<MechanismSpec> mechanisms = plan.mechanisms();
             // 1. 解码：同一周期、同一条指令带语义。
             for (int i = 0; i < mechanisms.size(); i++) {
-                pendingInstructions[i] = mechanisms.get(i).tape().instructionAt(cycle);
+                pendingInstructions[i] = mechanisms.get(i).instructionAt(cycle);
                 resolveTrackMotion(i, pendingInstructions[i]);
             }
 
@@ -254,7 +251,7 @@ public final class OrthogonalSimulator {
 
         // 1. 解码：同一周期、同一条指令带语义。
 //        for (int i = 0; i < mechanisms.size(); i++) {
-//            pendingInstructions[i] = mechanisms.get(i).tape().instructionAt(cycle);
+//            pendingInstructions[i] = mechanisms.get(i).instructionAt(cycle);
 //            resolveTrackMotion(i, pendingInstructions[i]);
 //        }
 
@@ -318,10 +315,6 @@ public final class OrthogonalSimulator {
 
         // 8. 提交实体状态与持有关系。
         commitAtomChanges(changes);
-        if (phase.isSecondHalf()) {
-            // 分子 bfs 缓存已过期
-            moleculeBfsCache.clear();
-        }
         for (EntityIntent intent : intents) {
             int i = intent.mechanismIndex();
             Set<Long> held = heldByMechanism.get(i);
@@ -509,7 +502,7 @@ public final class OrthogonalSimulator {
                 Direction.fromOrdinal(direction[index]),
                 length[index],
                 plan.mechanisms().get(index).combination(),
-                !heldByMechanism.get(index).isEmpty());
+                grabbed[index]);
     }
 
     private void haltForIncompatibleIntents(EntityIntent intent, EntityIntent other) {
@@ -595,7 +588,7 @@ public final class OrthogonalSimulator {
         ArmCombination combination = plan.mechanisms().get(index).combination();
         Direction facing = Direction.fromOrdinal(direction[index]);
         GridPoint base = new GridPoint(x[index], y[index]);
-        GridPoint[] claws = combination.grabPositionsArray(base, facing, length[index]);
+        GridPoint[] claws = combination.grabPosArray(base, facing, length[index]);
         Set<Long> grabbing = new HashSet<>();
 
         for (GridPoint target : claws) {
@@ -612,7 +605,7 @@ public final class OrthogonalSimulator {
      */
     public List<EntityIntent> motionIntents(int index) {
         Objects.checkIndex(index, mechanismCount());
-        return List.copyOf(buildMotionIntents(index, plan.mechanisms().get(index).tape().instructionAt(cycle)));
+        return List.copyOf(buildMotionIntents(index, plan.mechanisms().get(index).instructionAt(cycle)));
     }
 
     /** 执行与预览共用的纯构建路径，连通变化只传播运动关联而不扩大持有集合。 */
@@ -622,12 +615,13 @@ public final class OrthogonalSimulator {
             return List.of();
         }
 
-        ArmCombination combination = plan.mechanisms().get(index).combination();
-        Direction facing = Direction.fromOrdinal(direction[index]);
-        GridPoint base = new GridPoint(x[index], y[index]);
+        MechanismSpec m = plan.mechanisms().get(index);
+        MechanismView mech = mechanism(index);
+        GridPoint[] claws = mech.grabPosArray();
+        Set<EntityIntent> intents = new LinkedHashSet<>();
         GridPoint trackDelta = trackDelta(index, instruction);
-        GridPoint[] claws = combination.grabPositionsArray(base, facing, length[index]);
-        boolean stay = switch (instruction) {
+        // 不支持的指令按等待处理
+        boolean stay = !m.supportsInstruction(instruction) || switch (instruction) {
             case MOVE_FORWARD, MOVE_BACKWARD -> trackDelta.x() == 0 && trackDelta.y() == 0;
             case RETRACT_PISTON -> length[index] <= MechanismSpec.MIN_LENGTH;
             case EXTEND_PISTON -> length[index] >= MechanismSpec.MAX_LENGTH;
@@ -641,16 +635,18 @@ public final class OrthogonalSimulator {
                     collectEntities(p, heldEntities);
                 }
             }
-            return heldEntities.stream()
-                    .map(e -> EntityIntent.stay(e, index))
-                    .collect(Collectors.toList());
+            for (long e : heldEntities) {
+                intents.add(EntityIntent.stay(e, index));
+            }
+            return List.copyOf(intents);
         }
 
-        Set<EntityIntent> intents = new LinkedHashSet<>();
-
+        int sign = instruction == Instruction.EXTEND_PISTON ? 1 : -1;
+        int turn = instruction == Instruction.PIVOT_CCW ? -1 : 1;
         switch (instruction) {
             case EXTEND_PISTON, RETRACT_PISTON, PIVOT_CCW, PIVOT_CW -> {
                 List<Set<Long>> heldEntities = collectHeldEntities(index);
+                GridPoint[] worldOffset = mech.worldOffset();
                 for (int iArm = 0; iArm < 8; iArm++) {
                     GridPoint pivot = claws[iArm];
                     if (pivot == null) {
@@ -659,12 +655,12 @@ public final class OrthogonalSimulator {
                     for (long entity : heldEntities.get(iArm)) {
                         switch (instruction) {
                             case EXTEND_PISTON, RETRACT_PISTON -> {
-                                GridPoint offset = combination.worldOffset(facing, iArm);
-                                int sign = instruction == Instruction.EXTEND_PISTON ? 1 : -1;
-                                intents.add(EntityIntent.move(entity, index, sign * offset.x(), sign * offset.y()));
+                                GridPoint offset = worldOffset[iArm];
+                                intents.add(EntityIntent.move(entity, index,
+                                        sign * offset.x(),
+                                        sign * offset.y()));
                             }
-                            case PIVOT_CCW, PIVOT_CW -> intents.add(EntityIntent.rotate(
-                                    entity, index, pivot, instruction == Instruction.PIVOT_CCW ? -1 : 1));
+                            case PIVOT_CCW, PIVOT_CW -> intents.add(EntityIntent.rotate(entity, index, pivot, turn));
                             default -> {}
                         }
                     }
@@ -685,7 +681,7 @@ public final class OrthogonalSimulator {
                 case MOVE_FORWARD, MOVE_BACKWARD -> intents.add(EntityIntent.move(
                         entity, index, trackDelta.x(), trackDelta.y()));
                 case ROTATE_CCW, ROTATE_CW -> intents.add(EntityIntent.rotate(
-                        entity, index, base, instruction == Instruction.ROTATE_CCW ? -1 : 1));
+                        entity, index, mech.position(), instruction == Instruction.ROTATE_CCW ? -1 : 1));
                 default -> {}
             }
         }
@@ -699,7 +695,7 @@ public final class OrthogonalSimulator {
         Direction facing = Direction.fromOrdinal(direction[index]);
         GridPoint base = new GridPoint(x[index], y[index]);
 
-        for (GridPoint target : combination.grabPositionsArray(base, facing, length[index])) {
+        for (GridPoint target : combination.grabPosArray(base, facing, length[index])) {
             if (target != null) {
                 result.add(collectEntities(target));
             } else {
@@ -716,15 +712,9 @@ public final class OrthogonalSimulator {
     }
 
     private void collectEntities(GridPoint target, Set<Long> result) {
-        boolean ft = false;
-        Molecule molecule = moleculeBfsCache.get(target);
-        if (molecule == null) {
-            molecule = moleculeAt(target);
-            ft = true;
-        }
-        for (AtomPlacement atom : molecule.atoms()) {
+        // 预览与符文成拆键之间棋盘可能变化；每次读取当前连通分子，不跨阶段缓存。
+        for (AtomPlacement atom : moleculeAt(target).atoms()) {
             result.add(entityAtPosition.get(atom.position()));
-            if (ft) moleculeBfsCache.put(atom.position(), molecule);
         }
     }
 
@@ -1028,10 +1018,9 @@ public final class OrthogonalSimulator {
 
     /** 本周期开始时的完整状态快照；回滚时用它恢复。 */
     private Snapshot captureState() {
-        List<List<Long>> held = new ArrayList<>(heldByMechanism.size());
-        for (int i = 0; i < heldByMechanism.size(); i++) {
-            held.add(List.copyOf(heldByMechanism.get(i)));
-        }
+        List<List<Long>> held = heldByMechanism.stream()
+                .map(List::copyOf)
+                .collect(Collectors.toList());
         return new Snapshot(
                 Arrays.copyOf(x, x.length),
                 Arrays.copyOf(y, y.length),

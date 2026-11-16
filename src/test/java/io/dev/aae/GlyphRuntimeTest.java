@@ -3,6 +3,8 @@ package io.dev.aae;
 import io.dev.aae.mech.ArmCombination;
 import io.dev.aae.mech.InstructionTape;
 import io.dev.aae.mech.MechanismSpec;
+import io.dev.aae.mech.PistonSpec;
+import io.dev.aae.mech.StationarySpec;
 
 import io.dev.aae.glyph.GlyphBoard;
 import io.dev.aae.glyph.GlyphDefinition;
@@ -47,9 +49,9 @@ class GlyphRuntimeTest {
         // 两个输入分别生产独立单原子，运输到符文后才首次成键。
         try (var handle = GlyphRegistry.global().register(OMGlyphs.BONDING)) {
             OrthogonalSimulator simulator = simulatorOf(
-                    List.of(new MechanismSpec(new GridPoint(-2, 1), Direction.NORTH,
+                    List.of(new StationarySpec(new GridPoint(-2, 1), Direction.NORTH,
                                     InstructionTape.once("fggr")),
-                            new MechanismSpec(new GridPoint(-1, -1), Direction.SOUTH,
+                            new StationarySpec(new GridPoint(-1, -1), Direction.SOUTH,
                                     InstructionTape.once("fggr"))),
                     List.of(TrackBuilder.start(-2, 1).east().east().noLoop(),
                             TrackBuilder.start(-1, -1).east().east().noLoop()),
@@ -269,7 +271,7 @@ class GlyphRuntimeTest {
                     return state + 1;
                 }))) {
             OrthogonalSimulator simulator = simulatorOf(
-                    List.of(new MechanismSpec(new GridPoint(0, 1), Direction.NORTH,
+                    List.of(new StationarySpec(new GridPoint(0, 1), Direction.NORTH,
                             InstructionTape.once("fg"))),
                     List.of(track(0, 1, 1, 1)),
                     List.of(InputSpec.single(ORIGIN, sampleAtom())), List.of(),
@@ -404,11 +406,11 @@ class GlyphRuntimeTest {
 
     @Test
     void bondingAndUnbondingExpandMotionWithoutAddingSharedGrabCounts() {
-        // 符文把未抓住的 C 成键到 A 后，C 随当前连通分子运动但不新增抓取计数；拆键后 C 留在原地。
+        // 定长双分支沿轨道整体平移：成键使未抓住的 C 随 A 运动但不新增抓取计数，拆键后 C 留在原地。
         String type = uniqueTypeId("motion-connectivity");
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.of(type,
                 List.of(ORIGIN, new GridPoint(0, 1), new GridPoint(1, 0),
-                        new GridPoint(2, 0), new GridPoint(1, 2)), context -> {
+                        new GridPoint(1, 1)), context -> {
                     if (!context.phase().isFirstHalf()) return;
                     if (context.cycle() == 0) {
                         context.board().spawn(0, sampleAtom());
@@ -418,36 +420,70 @@ class GlyphRuntimeTest {
                         assertEquals(TryResult.APPLIED,
                                 context.board().bond(0, Direction.EAST, OMBonds.NORMAL.code));
                     } else if (context.cycle() == 3) {
-                        assertEquals(TryResult.APPLIED, context.board().unbond(2, Direction.EAST));
+                        assertEquals(TryResult.APPLIED, context.board().unbond(1, Direction.EAST));
                     }
                 }))) {
             OrthogonalSimulator simulator = simulatorOf(
-                    List.of(new MechanismSpec(ORIGIN, Direction.EAST, 1,
-                            new ArmCombination(0x11), InstructionTape.once(".fwgr"))),
-                    List.of(track(0, 0, 0, 1)), List.of(), List.of(),
+                    List.of(new StationarySpec(ORIGIN, Direction.EAST, 1,
+                            new ArmCombination(0x11), InstructionTape.once(".fggr"))),
+                    List.of(track(0, 0, 0, 1, 0, 2)), List.of(), List.of(),
                     List.of(new GlyphSpec(type, new GridPoint(1, 0))));
             simulator.step();
             long first = simulator.entityAt(new GridPoint(1, 0));
             long second = simulator.entityAt(new GridPoint(1, 1));
             long connected = simulator.entityAt(new GridPoint(2, 0));
             simulator.step();
-            assertEquals(List.of(first, second), simulator.heldEntities(0));
+            List<Long> held = simulator.heldEntities(0);
+            assertEquals(List.of(first, second), held);
+            // 成键前反复预览只能看到当前两个持有实体，不能改变周期、坐标或持有集合，
+            // 也不能让下一半周期符文成键后仍沿用旧连通关系，漏掉本应随 A 运动的 C。
+            var beforeBond = simulator.mechanism(0);
+            List<EntityIntent> separateMotion = List.of(EntityIntent.move(first, 0, 0, 1),
+                    EntityIntent.move(second, 0, 0, 1));
+            for (int preview = 0; preview < 3; preview++) {
+                assertEquals(separateMotion, simulator.motionIntents(0));
+                assertEquals(held, simulator.heldEntities(0));
+                assertEquals(2, simulator.cycle());
+                assertEquals(beforeBond, simulator.mechanism(0));
+                assertEquals(first, simulator.entityAt(new GridPoint(1, 0)));
+                assertEquals(second, simulator.entityAt(new GridPoint(1, 1)));
+                assertEquals(connected, simulator.entityAt(new GridPoint(2, 0)));
+            }
             simulator.step();
             assertFalse(simulator.isHalted());
-            assertEquals(connected, simulator.entityAt(new GridPoint(3, 0)));
-            assertEquals(0, simulator.grabsAt(new GridPoint(3, 0)));
-            assertEquals(1, simulator.grabsAt(new GridPoint(2, 0)));
-            assertEquals(1, simulator.grabsAt(new GridPoint(2, 2)));
-            assertEquals(List.of(first, second), simulator.heldEntities(0));
-            assertEquals(2, simulator.moleculeAt(new GridPoint(2, 0)).size());
+            assertEquals(first, simulator.entityAt(new GridPoint(1, 1)));
+            assertEquals(second, simulator.entityAt(new GridPoint(1, 2)));
+            assertEquals(connected, simulator.entityAt(new GridPoint(2, 1)));
+            assertEquals(0, simulator.grabsAt(new GridPoint(2, 1)));
+            assertEquals(1, simulator.grabsAt(new GridPoint(1, 1)));
+            assertEquals(1, simulator.grabsAt(new GridPoint(1, 2)));
+            assertEquals(held, simulator.heldEntities(0));
+            assertEquals(2, simulator.moleculeAt(new GridPoint(1, 1)).size());
+            // 拆键前预览应包含连通但未被抓住的 C；重复查询不得改动状态，
+            // 随后的符文拆键必须立即阻止 C 继续随 A 平移，不能被预览缓存污染。
+            var beforeUnbond = simulator.mechanism(0);
+            List<EntityIntent> connectedMotion = List.of(EntityIntent.move(first, 0, 0, 1),
+                    EntityIntent.move(second, 0, 0, 1), EntityIntent.move(connected, 0, 0, 1));
+            for (int preview = 0; preview < 3; preview++) {
+                assertEquals(connectedMotion, simulator.motionIntents(0));
+                assertEquals(held, simulator.heldEntities(0));
+                assertEquals(3, simulator.cycle());
+                assertEquals(beforeUnbond, simulator.mechanism(0));
+                assertEquals(first, simulator.entityAt(new GridPoint(1, 1)));
+                assertEquals(second, simulator.entityAt(new GridPoint(1, 2)));
+                assertEquals(connected, simulator.entityAt(new GridPoint(2, 1)));
+            }
             simulator.step();
             assertFalse(simulator.isHalted());
-            assertEquals(first, simulator.entityAt(new GridPoint(2, 1)));
-            assertEquals(second, simulator.entityAt(new GridPoint(2, 3)));
-            assertEquals(connected, simulator.entityAt(new GridPoint(3, 0)));
-            assertEquals(0, simulator.grabsAt(new GridPoint(3, 0)));
+            assertEquals(first, simulator.entityAt(new GridPoint(1, 2)));
+            assertEquals(second, simulator.entityAt(new GridPoint(1, 3)));
+            assertEquals(connected, simulator.entityAt(new GridPoint(2, 1)));
+            assertEquals(0, simulator.grabsAt(new GridPoint(2, 1)));
+            assertEquals(1, simulator.moleculeAt(new GridPoint(1, 2)).size());
+            assertEquals(1, simulator.mechanism(0).length());
             simulator.step();
             assertTrue(simulator.heldEntities(0).isEmpty());
+            assertEquals(List.of(first, second), held);
         }
     }
 
@@ -509,7 +545,7 @@ class GlyphRuntimeTest {
 
     @Test
     void glyphBusinessExceptionRollsBackTheWholeCycleAndIsRethrown() {
-        // 符文在正交/对角分支伸长提交后抛异常，比较整份机构视图与分支位移意图，验证共享持有和运动关联均回滚。
+        // 定长正交/对角分支旋转提交后抛异常，整份机构视图、共享持有和运动意图均应恢复到周期前。
         IllegalStateException failure = new IllegalStateException("boom");
         // 两支臂独立运输单原子，输入模板不带悬空键；运行时延迟产物仍携带高位键以验证回滚。
         Atom carried = Atom.of(0x8000);
@@ -533,11 +569,11 @@ class GlyphRuntimeTest {
                             // 抛异常前确认机构已运动，第一半周期状态与延迟产物也已经提交。
                             assertEquals(3, state);
                             assertEquals(new GridPoint(-1, 1), observed[0].mechanism(0).position());
-                            assertEquals(Direction.NORTH, observed[0].mechanism(0).direction());
-                            assertEquals(2, observed[0].mechanism(0).length());
+                            assertEquals(Direction.EAST, observed[0].mechanism(0).direction());
+                            assertEquals(1, observed[0].mechanism(0).length());
                             assertEquals(queued, observed[0].atomAt(new GridPoint(6, 5)));
-                            assertEquals(carried, observed[0].atomAt(new GridPoint(-1, -1)));
-                            assertEquals(otherAtom(), observed[0].atomAt(new GridPoint(1, -1)));
+                            assertEquals(carried, observed[0].atomAt(new GridPoint(0, 1)));
+                            assertEquals(otherAtom(), observed[0].atomAt(new GridPoint(0, 2)));
                             throw failure;
                         }
                     }
@@ -545,8 +581,8 @@ class GlyphRuntimeTest {
                 }))) {
 
             OrthogonalSimulator simulator = simulatorOf(
-                    List.of(new MechanismSpec(new GridPoint(-1, 1), Direction.NORTH, 1,
-                            new ArmCombination(0x11), InstructionTape.once("fww"))),
+                    List.of(new StationarySpec(new GridPoint(-1, 1), Direction.NORTH, 1,
+                            new ArmCombination(0x11), InstructionTape.once("fdd"))),
                     List.of(),
                     List.of(InputSpec.single(new GridPoint(-1, 0), carried),
                             InputSpec.single(ORIGIN, otherAtom())),
@@ -567,6 +603,8 @@ class GlyphRuntimeTest {
             var mechanismBefore = simulator.mechanism(0);
             List<Long> heldBefore = simulator.heldEntities(0);
             List<EntityIntent> motionBefore = simulator.motionIntents(0);
+            assertEquals(List.of(EntityIntent.rotate(entity, 0, new GridPoint(-1, 1), 1),
+                    EntityIntent.rotate(diagonalEntity, 0, new GridPoint(-1, 1), 1)), motionBefore);
 
             IllegalStateException thrown = assertThrows(IllegalStateException.class, simulator::step);
             assertSame(failure, thrown);
@@ -591,6 +629,68 @@ class GlyphRuntimeTest {
             assertNull(simulator.atomAt(new GridPoint(5, 5)));
             assertNull(simulator.atomAt(new GridPoint(6, 5)));
             assertEquals(2, simulator.boardSize());
+        }
+
+        // 同一异常验收补充显式单臂活塞：第二半周期必须先观察到长度已由 1 变成 2，再验证事务回滚。
+        String pistonType = uniqueTypeId("throwing-piston");
+        try (var handle = GlyphRegistry.global().register(new GlyphDefinition<Integer>(
+                pistonType, List.of(ORIGIN, new GridPoint(1, 0)), () -> 0, (context, state) -> {
+                    if (context.cycle() == 1) {
+                        if (context.phase().isFirstHalf()) {
+                            assertEquals(TryResult.APPLIED, context.board().spawn(0, Atom.of(0xFFFF)));
+                            assertEquals(TryResult.APPLIED, context.board().queueSpawn(1, queued));
+                        } else {
+                            assertEquals(3, state);
+                            assertEquals(2, observed[0].mechanism(0).length());
+                            assertEquals(new GridPoint(-1, 1), observed[0].mechanism(0).position());
+                            assertEquals(Direction.NORTH, observed[0].mechanism(0).direction());
+                            assertEquals(carried, observed[0].atomAt(new GridPoint(-1, -1)));
+                            assertEquals(queued, observed[0].atomAt(new GridPoint(6, 5)));
+                            throw failure;
+                        }
+                    }
+                    return state + 1;
+                }))) {
+            OrthogonalSimulator piston = simulatorOf(
+                    List.of(new PistonSpec(new GridPoint(-1, 1), Direction.NORTH, 1,
+                            InstructionTape.once("fww"))),
+                    List.of(InputSpec.single(new GridPoint(-1, 0), carried),
+                            InputSpec.single(ORIGIN, otherAtom())), List.of(),
+                    List.of(new GlyphSpec(pistonType, new GridPoint(5, 5))));
+            observed[0] = piston;
+            piston.init();
+            piston.step();
+            long entity = piston.entityAt(new GridPoint(-1, 0));
+            long spectator = piston.entityAt(ORIGIN);
+            var mechanismBefore = piston.mechanism(0);
+            List<Long> heldBefore = piston.heldEntities(0);
+            List<EntityIntent> motionBefore = piston.motionIntents(0);
+            assertEquals(List.of(entity), heldBefore);
+            assertEquals(List.of(EntityIntent.move(entity, 0, 0, -1)), motionBefore);
+            assertEquals(2, piston.glyphState(0));
+
+            assertSame(failure, assertThrows(IllegalStateException.class, piston::step));
+            assertTrue(piston.isHalted());
+            assertEquals(1, piston.cycle());
+            assertEquals(1, piston.warnings().size());
+            assertEquals(mechanismBefore, piston.mechanism(0));
+            assertEquals(1, piston.mechanism(0).length());
+            assertEquals(heldBefore, piston.heldEntities(0));
+            assertEquals(motionBefore, piston.motionIntents(0));
+            assertEquals(carried, piston.atomAt(new GridPoint(-1, 0)));
+            assertEquals(entity, piston.entityAt(new GridPoint(-1, 0)));
+            assertEquals(1, piston.grabsAt(new GridPoint(-1, 0)));
+            assertNull(piston.atomAt(new GridPoint(-1, -1)));
+            assertEquals(0, piston.entityAt(new GridPoint(-1, -1)));
+            assertEquals(0, piston.grabsAt(new GridPoint(-1, -1)));
+            assertEquals(otherAtom(), piston.atomAt(ORIGIN));
+            assertEquals(spectator, piston.entityAt(ORIGIN));
+            assertEquals(0, piston.grabsAt(ORIGIN));
+            assertEquals(2, piston.glyphState(0));
+            assertEquals(0, piston.pendingGlyphSpawnCount());
+            assertNull(piston.atomAt(new GridPoint(5, 5)));
+            assertNull(piston.atomAt(new GridPoint(6, 5)));
+            assertEquals(2, piston.boardSize());
         }
     }
 
@@ -635,11 +735,12 @@ class GlyphRuntimeTest {
         withInput.init();
         assertEquals(first, withInput.entityAt(ORIGIN));
 
-        // 两支臂抓住的是独立单原子，分别声明合法模板，重置后保持原来的实体创建及抓取顺序。
+        // 定长双分支先旋转再沿轨道移动；重置后恢复基座、朝向、持有顺序，旧运动快照不随之改变。
         ArmCombination combination = new ArmCombination(0x11);
         OrthogonalSimulator holding = simulatorOf(
-                List.of(new MechanismSpec(ORIGIN, Direction.EAST, 1,
-                        combination, InstructionTape.once("fdw"))),
+                List.of(new StationarySpec(ORIGIN, Direction.EAST, 1,
+                        combination, InstructionTape.once("fdg"))),
+                List.of(track(0, 0, 0, -1)),
                 List.of(InputSpec.single(new GridPoint(1, 0), sampleAtom()),
                         InputSpec.single(new GridPoint(1, 1), otherAtom())),
                 List.of(), List.of());
@@ -647,13 +748,20 @@ class GlyphRuntimeTest {
         holding.step();
         List<Long> held = holding.heldEntities(0);
         List<EntityIntent> motion = holding.motionIntents(0);
+        assertEquals(List.of(EntityIntent.rotate(held.get(0), 0, ORIGIN, 1),
+                EntityIntent.rotate(held.get(1), 0, ORIGIN, 1)), motion);
         holding.run(2);
+        assertFalse(holding.isHalted());
         assertEquals(Direction.SOUTH, holding.mechanism(0).direction());
-        assertEquals(2, holding.mechanism(0).length());
+        assertEquals(new GridPoint(0, -1), holding.mechanism(0).position());
+        assertEquals(1, holding.mechanism(0).length());
+        assertEquals(held.get(0).longValue(), holding.entityAt(ORIGIN));
+        assertEquals(held.get(1).longValue(), holding.entityAt(new GridPoint(-1, 0)));
         holding.reset();
         assertTrue(holding.heldEntities(0).isEmpty());
         assertTrue(holding.motionIntents(0).isEmpty());
         assertFalse(holding.mechanism(0).grabbing());
+        assertEquals(ORIGIN, holding.mechanism(0).position());
         assertEquals(Direction.EAST, holding.mechanism(0).direction());
         assertEquals(1, holding.mechanism(0).length());
         assertEquals(combination, holding.mechanism(0).combination());

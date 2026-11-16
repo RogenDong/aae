@@ -67,6 +67,16 @@ public record ArmCombination(int code) {
         return direction.localOffsetToWorld(localOffset(iArm));
     }
 
+    public GridPoint[] worldOffset(Direction direction) {
+        var all = new GridPoint[8];
+        for (int a = 0, f = 1; a < 8; a++, f <<= 1) {
+            if ((code & f) != 0) {
+                all[a] = direction.localOffsetToWorld(OFFSETS.get(a));
+            }
+        }
+        return all;
+    }
+
     public GridPoint grabPosition(GridPoint base, Direction direction, int length, int iArm) {
         MechanismSpec.validateLength(length);
         GridPoint offset = localOffset(iArm);
@@ -75,7 +85,8 @@ public record ArmCombination(int code) {
                 offset.y() * length));
     }
 
-    public List<GridPoint> grabPositions(GridPoint base, Direction direction, int length) {
+    /** 有效抓点的世界坐标 */
+    public List<GridPoint> enabledGrabPositions(GridPoint base, Direction direction, int length) {
         List<GridPoint> result = new ArrayList<>(8);
         for (int flag = 1; flag < 0x100; flag <<= 1) {
             if ((code & flag) != 0) {
@@ -88,18 +99,17 @@ public record ArmCombination(int code) {
         return List.copyOf(result);
     }
 
-    public GridPoint[] grabPositionsArray(GridPoint base, Direction direction, int length) {
-        List<GridPoint> result = new ArrayList<>(8);
-        for (int flag = 1; flag < 0x100; flag <<= 1) {
-            if ((code & flag) == 0) {
-                result.add(null);
-                continue;
+    public GridPoint[] grabPosArray(GridPoint base, Direction direction, int length) {
+        MechanismSpec.validateLength(length);
+        var result = new GridPoint[8];
+        for (int a = 0, f = 1; a < 8; a++, f <<= 1) {
+            if ((code & f) != 0) {
+                GridPoint offset = OFFSETS.get(a);
+                result[a] = direction.localToWorld(base, new GridPoint(
+                        offset.x() * length,
+                        offset.y() * length));
             }
-            GridPoint offset = localOffsetByFlag(flag);
-            result.add(direction.localToWorld(base, new GridPoint(
-                    offset.x() * length,
-                    offset.y() * length)));
         }
-        return result.toArray(new GridPoint[8]);
+        return result;
     }
 }

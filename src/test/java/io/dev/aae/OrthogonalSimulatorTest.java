@@ -152,13 +152,14 @@ class OrthogonalSimulatorTest {
 
     @Test
     void translatingTheWholePlanTranslatesTheResult() {
+        // 原计划与平移副本均为定长机械，整体平移不得改变轨道节拍和旋转结果。
         GridPoint offset = new GridPoint(100, -50);
         TrackSpec originalTrack = squareLoop(3, 4);
         TrackSpec translatedTrack = new TrackSpec(
                 originalTrack.points().stream().map(point -> point.add(offset)).toList(),
                 originalTrack.isLoop());
         MechanismSpec originalSpec = mechanism(3, 4, Direction.WEST, "ggagdt");
-        MechanismSpec translatedSpec = new MechanismSpec(
+        MechanismSpec translatedSpec = new StationarySpec(
                 originalSpec.initialPosition().add(offset),
                 originalSpec.initialDirection(),
                 originalSpec.tape());
@@ -302,7 +303,8 @@ class OrthogonalSimulatorTest {
             long y,
             Direction direction,
             String program) {
-        return new MechanismSpec(new GridPoint(x, y), direction, program);
+        // 轨道与转向验收使用定长机构，移动能力不依赖活塞伸缩。
+        return new StationarySpec(new GridPoint(x, y), direction, program);
     }
 
     private static TrackSpec squareLoop(long x, long y) {

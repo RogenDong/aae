@@ -3,6 +3,7 @@ package io.dev.aae.mech;
 import io.dev.aae.Direction;
 import io.dev.aae.GridPoint;
 
+import java.util.List;
 import java.util.Objects;
 
 /** 机构的只读状态；{@code position} 表示基座格点。 */
@@ -59,7 +60,15 @@ public record MechanismView(
     }
 
     /** 按启用位升序返回所有抓点的不可变快照。 */
-    public java.util.List<GridPoint> grabPositions() {
-        return combination.grabPositions(position, direction, length);
+    public List<GridPoint> grabPositions() {
+        return combination.enabledGrabPositions(position, direction, length);
+    }
+
+    public GridPoint[] grabPosArray() {
+        return combination.grabPosArray(position, direction, length);
+    }
+
+    public GridPoint[] worldOffset() {
+        return combination.worldOffset(direction);
     }
 }

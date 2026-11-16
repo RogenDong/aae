@@ -4,13 +4,49 @@
 
 ## 1. 分层
 
-- `SimulationPlan`、`MechanismSpec`、`TrackSpec`、`InstructionTape` 是不可变定义。
+- `SimulationPlan`、`TrackSpec`、`InstructionTape` 是不可变定义。
+- 机构由抽象 sealed `MechanismSpec` 和两个不可变 final 子类 `StationarySpec`、`PistonArmSpec` 定义。
 - `TrackNetwork` 在计划构造时把轨道编译成 `+/-` 查询，并验证轨道节点的唯一归属。
 - `OrthogonalSimulator` 保存机构、棋盘、实体、抓取计数、周期和事务快照。
 - `GlyphRuntime` 保存计划快照对应的符文实例状态、半周期视图和当前整数周期的延迟产物。
 - `GlyphRegistry` 只负责类型定义注册；计划构造时解析并复制所引用的定义，之后注册表变化不影响计划。
 
 项目不提供原子或键名称注册类。原子类型是调用方解释的 `int`，键类型是 `byte`，两者可以使用相同数值。
+
+### 1.1 机构定义与能力
+
+`MechanismSpec` 不可直接 `new`，仅 permits `StationarySpec`、`PistonArmSpec`。
+基类保存初始基座、朝向、长度与指令带，提供 `initialPosition()`、`initialDirection()`、
+`length()`、`initialLength()`、`tape()` 公共访问器；子类实现 `combination()` 与
+`supportsInstruction(Instruction)`。final `instructionAt(long cycle)` 先按原始指令带取指，
+再把不受支持的指令映射为 `WAIT`，不压缩周期、不修改原始指令带。
+
+- `StationarySpec` 保存 `ArmCombination`，支持组合单臂、多臂和对角分支。静态只表示运行时长度固定，
+  不限制轨道移动、基座旋转、抓点枢轴旋转与抓放。`w/s` 始终等待，即使共持实体也继续施加 `STAY`，
+  不能借不支持的伸缩指令绕过共持冲突。
+- `PistonArmSpec` 仅使用默认 bit0 单臂，不接受组合参数；支持全部指令，`w/s` 在 `1..3` 之间改变长度，
+  到达边界后保持原地。伸缩沿机构朝向平移持有分子。
+
+两类初始长度都必须为 `1..3`，省略时为 1；字符串指令带默认从周期 0 循环。
+`StationarySpec` 承接原定义的全部构造形式，尤其 `(position, direction, int combinationCode, String)`
+中的整数仍为组合编码；指定单臂字符串长度可用 `(position, direction, String, int length)`。
+`PistonArmSpec` 提供 `(position, direction, int length, tape/string)` 和
+`(position, direction, tape/string[, int length])`，整数表示长度，不提供组合构造器：
+
+```java
+MechanismSpec multiArm = new StationarySpec(
+        new GridPoint(0, 0), Direction.EAST, 0x11, "fdra");
+MechanismSpec piston = new PistonArmSpec(
+        new GridPoint(4, 0), Direction.EAST, 2, "fwrs");
+```
+
+多臂的所有分支共享固定长度、基座、基准朝向和持有集合；对角分支的长度 n 表示两个局部坐标轴各偏移 n，
+绘制杆长为 `sqrt(2) * n`。抓取收集全部启用抓点上的连通分子，并按实体去重；释放统一清空共享持有，
+没有逐分支抓取状态。轨道移动和基座旋转作用于整个共享集合；枢轴旋转按关联分支的实际抓点建立旋转约束，
+同实体命中不同枢轴时可能冲突。共持时每个静止持有者都提交 `STAY`，与另一个持有者的非零运动不兼容。
+
+GUI 机械臂插值读取 `spec.instructionAt(cycle)`，实体插值继续归并模拟器 `motionIntents(index)`；
+指令带 UI 可显示 `tape()` 中的原始字符，不因此让固定臂长机构产生伸缩动画。
 
 ## 2. 轨道拓扑
 
@@ -36,7 +72,7 @@
 
 | 阶段 | 第一半周期 | 第二半周期 |
 |---|---|---|
-| Decode | 读取当前周期指令 | 读取同一周期指令 |
+| Decode | 通过 `MechanismSpec.instructionAt(cycle)` 读取有效指令 | 读取同一周期有效指令 |
 | Intent | `GRAB/RELEASE` | 移动、旋转、伸缩及携带实体；静止持有者提交 `STAY` |
 | Conflict | 按实体检查意图兼容性 | 同左 |
 | Transform | 不改变机构 | 写入 `next*` 暂存状态 |
@@ -74,6 +110,10 @@
 输出匹配都使用完整的 `int` 类型；周期快照和回滚保存完整 `Atom` 对象。键类型不要求与原子类型
 互异，也不要求名称存在。`MoleculeBfs` 默认只沿互惠长期键搜索；调用方可传入 `BondFilter`
 把临时键纳入搜索。
+
+机构抓取和运动关联每次都从当前棋盘遍历连通分子，不保留跨查询、跨半周期的 BFS 缓存。
+因此 `motionIntents()` 预览不会让后续符文成键漏带新连接原子，也不会在拆键后继续携带已分离原子。
+多抓点命中同一分子时可能重复遍历；若后续基准证明确有瓶颈，再考虑限定在无棋盘变更阶段内的局部复用。
 
 测试编码辅助类仍保留调用方的 `byte` 编码体系，传入原子接口时自动扩宽；
 调用方自己的保留码规则不限制引擎对类型 `0` 的支持，负字节不会被引擎转换为无符号类型。

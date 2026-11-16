@@ -84,7 +84,8 @@ public final class FloatWorld {
         for (int i = 0; i < plan.mechanisms().size(); i++) {
             var spec = plan.mechanisms().get(i);
             MechanismView view = simulator.mechanism(i);
-            Instruction inst = spec.tape().instructionAt(currentCycle);
+            // 与模拟器使用同一有效指令：固定臂长机构的 w/s 仅等待，不绘制伸缩。
+            Instruction inst = spec.instructionAt(currentCycle);
 
             double baseX = view.position().x();
             double baseY = view.position().y();

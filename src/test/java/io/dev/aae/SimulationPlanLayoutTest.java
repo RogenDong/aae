@@ -3,6 +3,7 @@ package io.dev.aae;
 import io.dev.aae.mech.ArmCombination;
 import io.dev.aae.mech.InstructionTape;
 import io.dev.aae.mech.MechanismSpec;
+import io.dev.aae.mech.StationarySpec;
 
 import io.dev.aae.glyph.GlyphDefinition;
 import io.dev.aae.glyph.GlyphRegistry;
@@ -220,12 +221,13 @@ class SimulationPlanLayoutTest {
     }
 
     private static MechanismSpec arm(GridPoint position, Direction direction, int length) {
-        return new MechanismSpec(position, direction, length, InstructionTape.once("."));
+        // 布局只关心定长机构的基座，臂长与抓点不得扩大机构占位。
+        return new StationarySpec(position, direction, length, InstructionTape.once("."));
     }
 
     private static MechanismSpec multiArm(GridPoint position, Direction direction, int length) {
         // bit 0/1 为正交分支，bit 4 为对角分支；测试只验证这些分支不会扩大基座冲突判定。
-        return new MechanismSpec(position, direction, length,
+        return new StationarySpec(position, direction, length,
                 new ArmCombination(0x13), InstructionTape.once("."));
     }
 

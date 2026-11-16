@@ -101,9 +101,9 @@ class CoHoldingTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"q", "e", "w", "s"})
+    @ValueSource(strings = {"q", "e"})
     void incompatibleBranchCentersOrDisplacementsRollBackTheWholeCycle(String instruction) {
-        // 连通三原子分子与旁路单原子分别播种；分支中心或位移不兼容时，两机构都不得部分提交。
+        // 定长多臂抓住连通三原子分子；两抓点给出不同枢轴中心时，旁路机构也不得部分提交。
         Atom top = ATOM.withBond(Direction.SOUTH, 2);
         Atom bottom = Atom.of(3).withBond(Direction.NORTH, 2);
         OrthogonalSimulator simulator = initialStateSimulator(
@@ -141,19 +141,23 @@ class CoHoldingTest {
 
     @ParameterizedTest
     @CsvSource({"WAIT,.,1", "GRAB,f,1", "ENDPOINT,g,1", "OFF_TRACK,g,1",
-            "MAXIMUM,w,3", "MINIMUM,s,1"})
+            "STATIONARY_EXTEND,w,2", "STATIONARY_RETRACT,s,2", "MAXIMUM,w,3", "MINIMUM,s,1"})
     void stationaryCoHolderBlocksPistonMotion(String scenario, String instruction, int stationaryLength) {
+        // 定长臂在中间长度收到 w/s 仍提供 STAY；活塞自身的最大/最小长度边界也保持相同的共持约束。
         GridPoint stationaryBase = new GridPoint(0, stationaryLength);
         List<TrackSpec> tracks = scenario.equals("ENDPOINT")
                 ? List.of(new TrackSpec(new GridPoint(-1, stationaryLength), stationaryBase))
                 : List.of();
+        MechanismSpec coHolder = scenario.equals("MAXIMUM") || scenario.equals("MINIMUM")
+                ? piston(0, stationaryLength, Direction.NORTH, stationaryLength, "f" + instruction)
+                : arm(0, stationaryLength, Direction.NORTH, stationaryLength, "f" + instruction);
         OrthogonalSimulator simulator = simulator(
-                List.of(arm(-1, 0, Direction.EAST, 1, "fw"),
-                        arm(0, stationaryLength, Direction.NORTH, stationaryLength,
-                                "f" + instruction)), tracks, InputSpec.single(ORIGIN, ATOM));
+                List.of(piston(-1, 0, Direction.EAST, 1, "fw"), coHolder),
+                tracks, InputSpec.single(ORIGIN, ATOM));
         simulator.step();
         assertFalse(simulator.isHalted());
         long entity = simulator.entityAt(ORIGIN);
+        assertEquals(List.of(EntityIntent.stay(entity, 1)), simulator.motionIntents(1));
 
         simulator.step();
 
@@ -320,7 +324,7 @@ class CoHoldingTest {
     private static OrthogonalSimulator initialStateSimulator(
             List<MechanismSpec> arms, List<TrackSpec> tracks, InputSpec... molecules) {
         // 分子参数均通过生产校验；这里只播种一次性棋盘初态，不声明会自动补料的生产 I/O。
-        // 双向实体索引、后续编号和缓存一起同步，保持共持与冲突回滚的真实运行态语义。
+        // 同步双向实体索引与后续编号，连通关系直接从当前棋盘读取，保持共持与回滚的运行态语义。
         new SimulationPlan(arms, tracks, List.of(molecules), List.of(), 1);
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(arms, tracks));
         simulator.init();
@@ -346,9 +350,6 @@ class CoHoldingTest {
             var nextIdField = OrthogonalSimulator.class.getDeclaredField("nextEntityId");
             nextIdField.setAccessible(true);
             nextIdField.setLong(simulator, nextId);
-            var cacheField = OrthogonalSimulator.class.getDeclaredField("moleculeBfsCache");
-            cacheField.setAccessible(true);
-            ((Map<?, ?>) cacheField.get(simulator)).clear();
         } catch (ReflectiveOperationException failure) {
             throw new AssertionError("无法建立共持测试初态", failure);
         }
@@ -364,13 +365,19 @@ class CoHoldingTest {
     }
 
     private static MechanismSpec arm(long x, long y, Direction direction, int length, String program) {
-        return new MechanismSpec(new GridPoint(x, y), direction, length, InstructionTape.once(program));
+        // 定长机构的类型由场景明确指定，不根据指令字符串推断是否为活塞。
+        return new StationarySpec(new GridPoint(x, y), direction, length, InstructionTape.once(program));
+    }
+
+    private static MechanismSpec piston(long x, long y, Direction direction, int length, String program) {
+        // 显式选择可伸缩单臂，使共持运动者与固定臂长约束分开建模。
+        return new PistonSpec(new GridPoint(x, y), direction, length, InstructionTape.once(program));
     }
 
     private static MechanismSpec arm(
             long x, long y, Direction direction, int length, int code, String program) {
         // 显式组合编码只用于多分支场景，其余计划参数继续沿用现有单次指令带约定。
-        return new MechanismSpec(new GridPoint(x, y), direction, length,
+        return new StationarySpec(new GridPoint(x, y), direction, length,
                 new ArmCombination(code), InstructionTape.once(program));
     }
 }

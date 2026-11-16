@@ -4,6 +4,7 @@ import io.dev.aae.mech.ArmCombination;
 import io.dev.aae.mech.InstructionTape;
 import io.dev.aae.mech.MechanismSpec;
 import io.dev.aae.mech.MechanismView;
+import io.dev.aae.mech.StationarySpec;
 
 import io.dev.aae.glyph.GlyphDefinition;
 import io.dev.aae.glyph.GlyphRegistry;
@@ -371,7 +372,7 @@ class OrthogonalSimulatorLifecycleTest {
         assertEquals(1, simulator.grabsAt(new GridPoint(1, 2)));
 
         OrthogonalSimulator multi = new OrthogonalSimulator(new SimulationPlan(
-                List.of(new MechanismSpec(new GridPoint(0, 0), Direction.EAST, 1,
+                List.of(new StationarySpec(new GridPoint(0, 0), Direction.EAST, 1,
                         new ArmCombination(0x11), InstructionTape.once("fdr"))),
                 List.of(InputSpec.of(
                         AtomPlacement.of(1, 0, sampleAtom().withBond(Direction.SOUTH, 2)),
@@ -408,7 +409,7 @@ class OrthogonalSimulatorLifecycleTest {
     void grabIsNoOpWhenAlreadyHoldingAndReleaseIsNoOpWhenHoldingNothing() {
         // 重复抓取不累加共享计数，重复释放不产生负计数，并保留释放前的不可变持有快照。
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
-                List.of(new MechanismSpec(new GridPoint(1, 0), Direction.WEST,
+                List.of(new StationarySpec(new GridPoint(1, 0), Direction.WEST,
                         InstructionTape.once("rffrr"))),
                 List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())),
                 List.of(),
@@ -438,9 +439,9 @@ class OrthogonalSimulatorLifecycleTest {
         Atom atom = sampleAtom();
         SimulationPlan plan = new SimulationPlan(
                 List.of(
-                        new MechanismSpec(new GridPoint(-1, 0), Direction.EAST, ArmCombination.DEFAULT,
+                        new StationarySpec(new GridPoint(-1, 0), Direction.EAST, ArmCombination.DEFAULT,
                                 InstructionTape.once("fr")),
-                        new MechanismSpec(new GridPoint(1, 0), Direction.WEST, ArmCombination.DEFAULT,
+                        new StationarySpec(new GridPoint(1, 0), Direction.WEST, ArmCombination.DEFAULT,
                                 InstructionTape.once("fr"))),
                 List.of(InputSpec.single(new GridPoint(0, 0), atom)), List.of(), 1);
         OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
@@ -465,7 +466,7 @@ class OrthogonalSimulatorLifecycleTest {
         // 多臂机构只有一个抓点命中原子时也进入 grabbing 状态，空抓点不产生虚拟实体或额外计数。
         ArmCombination combination = new ArmCombination(0x03);
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
-                List.of(new MechanismSpec(new GridPoint(0, 0), Direction.EAST, 1,
+                List.of(new StationarySpec(new GridPoint(0, 0), Direction.EAST, 1,
                         combination, InstructionTape.once("f."))),
                 List.of(InputSpec.single(new GridPoint(1, 0), sampleAtom())), List.of(), 1));
 
@@ -483,7 +484,7 @@ class OrthogonalSimulatorLifecycleTest {
         // 用两个合法单原子输入分别提供正交点与旋转后的对角点；重复 f 不能为已抓握机构补抓另一分支。
         ArmCombination combination = new ArmCombination(0x11);
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
-                List.of(new MechanismSpec(new GridPoint(0, 0), Direction.EAST, 1,
+                List.of(new StationarySpec(new GridPoint(0, 0), Direction.EAST, 1,
                         combination, InstructionTape.once("fdf"))),
                 List.of(InputSpec.single(new GridPoint(1, 0), sampleAtom()),
                         InputSpec.single(new GridPoint(-1, 1), otherAtom())), List.of(), 1));
@@ -506,9 +507,9 @@ class OrthogonalSimulatorLifecycleTest {
         ArmCombination combination = new ArmCombination(0x11);
         SimulationPlan plan = new SimulationPlan(
                 List.of(
-                        new MechanismSpec(new GridPoint(-1, 0), Direction.EAST, 1,
+                        new StationarySpec(new GridPoint(-1, 0), Direction.EAST, 1,
                                 combination, InstructionTape.once("fdd")),
-                        new MechanismSpec(new GridPoint(1, 0), Direction.WEST, 1,
+                        new StationarySpec(new GridPoint(1, 0), Direction.WEST, 1,
                                 combination, InstructionTape.once("fdd"))),
                 List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())), List.of(), 1);
         OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
@@ -660,7 +661,8 @@ class OrthogonalSimulatorLifecycleTest {
 
     private static MechanismSpec mechanism(
             long x, long y, Direction direction, String program) {
-        return new MechanismSpec(new GridPoint(x, y), direction, program);
+        // 输入、输出与持有生命周期沿用定长机构，旋转和轨道运输仍按原周期执行。
+        return new StationarySpec(new GridPoint(x, y), direction, program);
     }
 
     private static TrackSpec track(long... coordinates) {
