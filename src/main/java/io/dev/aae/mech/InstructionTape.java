@@ -56,19 +56,44 @@ public final class InstructionTape {
     }
 
     public Instruction instructionAt(long cycle) {
+        return instructionAt(cycle, instructions.length);
+    }
+
+    /**
+     * 以指定的有效长度读取指令，供模拟器把不同长度的指令带同步到统一节拍。
+     *
+     * <p>{@code effectiveLength} 只改变读取视图，不修改原始内容、{@link #length()}、播放模式或
+     * {@link #startCycle()}。原始内容之后的填充槽位读作 {@link Instruction#WAIT}；
+     * {@link Playback#LOOPING} 按有效长度取模，因此较短的指令带会在统一周期内先等待再回到首条
+     * 指令，而 {@link Playback#ONCE} 仍在原始内容结束后保持等待。</p>
+     *
+     * @param cycle           当前周期，必须非负
+     * @param effectiveLength 有效长度，必须不小于原始指令带长度；原始指令带为空时忽略并通过
+     * @return 该周期读取到的指令；尚未到达 {@code startCycle} 或处于填充槽位时返回等待
+     * @throws IllegalArgumentException 周期为负，或有效长度小于原始指令带长度
+     */
+    public Instruction instructionAt(long cycle, int effectiveLength) {
         if (cycle < 0) {
             throw new IllegalArgumentException("cycle must be non-negative");
         }
-        if (cycle < startCycle || instructions.length == 0) {
+        if (instructions.length == 0) {
+            return Instruction.WAIT;
+        }
+        if (effectiveLength < instructions.length) {
+            throw new IllegalArgumentException(
+                    "effectiveLength must not be shorter than the tape length");
+        }
+        if (cycle < startCycle) {
             return Instruction.WAIT;
         }
 
         long elapsed = cycle - startCycle;
+        // 单次播放以原始内容结束为准，统一长度只影响循环播放的周期长度。
         if (playback == Playback.ONCE && elapsed >= instructions.length) {
             return Instruction.WAIT;
         }
-        int index = (int) (elapsed % instructions.length);
-        return instructions[index];
+        int index = (int) (elapsed % effectiveLength);
+        return index < instructions.length ? instructions[index] : Instruction.WAIT;
     }
 
     public int length() {

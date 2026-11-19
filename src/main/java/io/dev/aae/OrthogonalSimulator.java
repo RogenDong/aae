@@ -77,6 +77,13 @@ public final class OrthogonalSimulator {
     private final Instruction[] pendingInstructions;
     private final long[] pendingTrackDeltaX;
     private final long[] pendingTrackDeltaY;
+    /**
+     * 统一指令带长度：计划中最长原始指令带的长度。
+     *
+     * <p>初始化时按 {@code tape.length()} 取最大值，与各指令带的 {@code startCycle} 无关；
+     * 较短指令带在这个长度内以等待补齐，最长指令带的内容与节拍保持不变。</p>
+     */
+    private final int tapeLength;
 
     /** 原子棋盘。被抓住的原子留在棋盘上，由抓取计数区分是否被持有。 */
     private final AtomGrid board = new AtomGrid();
@@ -113,6 +120,7 @@ public final class OrthogonalSimulator {
         this.pendingInstructions = new Instruction[size];
         this.pendingTrackDeltaX = new long[size];
         this.pendingTrackDeltaY = new long[size];
+        this.tapeLength = synchronizedTapeLength(plan);
         this.heldByMechanism = new ArrayList<>(size);
         for (int i = 0; i < size; i++) {
             this.heldByMechanism.add(new LinkedHashSet<>(8));
@@ -136,6 +144,20 @@ public final class OrthogonalSimulator {
                 .collect(Collectors.toUnmodifiableSet());
     }
 
+    /**
+     * 统一指令带长度：计划中最长原始指令带的长度。
+     *
+     * <p>只比较 {@link InstructionTape#length()}，因此 {@code startCycle} 不参与最大值计算；
+     * 指令带为空的机构不影响结果。没有机构时返回 {@code 0}。</p>
+     */
+    private static int synchronizedTapeLength(SimulationPlan plan) {
+        int longest = 0;
+        for (MechanismSpec mechanism : plan.mechanisms()) {
+            longest = Math.max(longest, mechanism.tape().length());
+        }
+        return longest;
+    }
+
     private long getNextEntityId() {
         return nextEntityId++;
     }
@@ -150,6 +172,15 @@ public final class OrthogonalSimulator {
 
     public int mechanismCount() {
         return x.length;
+    }
+
+    /**
+     * 统一指令带长度：计划中最长原始指令带的长度，初始化时固定，与各带的 {@code startCycle} 无关。
+     *
+     * <p>模拟推进、运动预览与动画插值都应使用它读取指令，才能与 {@link #step()} 的节拍一致。</p>
+     */
+    public int tapeLength() {
+        return tapeLength;
     }
 
     /** 计划里的符文数量。 */
@@ -207,7 +238,7 @@ public final class OrthogonalSimulator {
             List<MechanismSpec> mechanisms = plan.mechanisms();
             // 1. 解码：同一周期、同一条指令带语义。
             for (int i = 0; i < mechanisms.size(); i++) {
-                pendingInstructions[i] = mechanisms.get(i).instructionAt(cycle);
+                pendingInstructions[i] = mechanisms.get(i).instructionAt(cycle, tapeLength);
                 resolveTrackMotion(i, pendingInstructions[i]);
             }
 
@@ -602,10 +633,13 @@ public final class OrthogonalSimulator {
     /**
      * 当前已提交持有状态对当前指令的运动意图，不预测抓取，也不推进或修改模拟器。
      * 返回不可变快照，仅含 STAY/MOVE/ROTATE；释放指令返回空列表。
+     *
+     * <p>预览与实际推进共用统一指令带长度，短指令带在当前周期进入填充槽位时按等待返回空意图。</p>
      */
     public List<EntityIntent> motionIntents(int index) {
         Objects.checkIndex(index, mechanismCount());
-        return List.copyOf(buildMotionIntents(index, plan.mechanisms().get(index).instructionAt(cycle)));
+        return List.copyOf(buildMotionIntents(
+                index, plan.mechanisms().get(index).instructionAt(cycle, tapeLength)));
     }
 
     /** 执行与预览共用的纯构建路径，连通变化只传播运动关联而不扩大持有集合。 */

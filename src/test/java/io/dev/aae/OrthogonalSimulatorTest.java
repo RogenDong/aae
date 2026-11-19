@@ -204,10 +204,23 @@ class OrthogonalSimulatorTest {
             Direction direction = Direction.values()[random.nextInt(4)];
             String program = randomProgram(random, 3 + random.nextInt(12));
             TrackSpec track = squareLoop(baseX, 0);
-            MechanismSpec spec = mechanism(baseX, 0, direction, program);
-            specs.add(spec);
+            specs.add(mechanism(baseX, 0, direction, program));
             tracks.add(track);
-            reference.add(new ReferenceState(track.points(), direction, spec.tape()));
+        }
+
+        // 模拟器初始化时把所有指令带同步到最长长度，因此参考模型也必须按统一长度读取，
+        // 才能与模拟器逐周期对齐；指令带容不改写。
+        int unifiedTapeLength = specs.stream()
+                .mapToInt(spec -> spec.tape().length())
+                .max()
+                .orElse(0);
+        for (int index = 0; index < specs.size(); index++) {
+            MechanismSpec spec = specs.get(index);
+            reference.add(new ReferenceState(
+                    tracks.get(index).points(),
+                    spec.initialDirection(),
+                    spec.tape(),
+                    unifiedTapeLength));
         }
 
         OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(specs, tracks));
@@ -323,18 +336,21 @@ class OrthogonalSimulatorTest {
     private static final class ReferenceState {
         private final List<GridPoint> loop;
         private final InstructionTape tape;
+        /** 参考模型读取指令带的有效长度：与模拟器的统一长度一致。 */
+        private final int tapeLength;
         private int trackIndex;
         private Direction direction;
 
         private ReferenceState(
-                List<GridPoint> loop, Direction direction, InstructionTape tape) {
+                List<GridPoint> loop, Direction direction, InstructionTape tape, int tapeLength) {
             this.loop = loop;
             this.direction = direction;
             this.tape = tape;
+            this.tapeLength = tapeLength;
         }
 
         private void step(long cycle) {
-            switch (tape.instructionAt(cycle)) {
+            switch (tape.instructionAt(cycle, tapeLength)) {
                 case MOVE_FORWARD -> trackIndex = (trackIndex + 1) % loop.size();
                 case MOVE_BACKWARD -> trackIndex = (trackIndex + loop.size() - 1) % loop.size();
                 case ROTATE_CCW -> direction = direction.turnLeft();

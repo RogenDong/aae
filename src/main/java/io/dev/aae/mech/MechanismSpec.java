@@ -58,7 +58,21 @@ public abstract sealed class MechanismSpec permits StationarySpec, PistonSpec {
 
     /** 模拟执行及运动预览共用的有效指令；不改变原指令带的播放节拍。 */
     public final Instruction instructionAt(long cycle) {
-        Instruction instruction = tape.instructionAt(cycle);
+        return instructionAt(cycle, tape.length());
+    }
+
+    /**
+     * 以指定的有效指令带长度读取有效指令，供模拟器把所有指令带同步到统一节拍。
+     *
+     * <p>有效长度只改变读取视图，不修改原始指令带；不支持的指令仍按等待处理。</p>
+     *
+     * @param cycle           当前周期，必须非负
+     * @param tapeLength      有效指令带长度，必须不小于原始指令带长度
+     * @return 该周期的有效指令
+     * @throws IllegalArgumentException 周期为负，或有效长度小于原始指令带长度
+     */
+    public final Instruction instructionAt(long cycle, int tapeLength) {
+        Instruction instruction = tape.instructionAt(cycle, tapeLength);
         return supportsInstruction(instruction) ? instruction : Instruction.WAIT;
     }
 

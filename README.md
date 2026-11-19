@@ -131,6 +131,10 @@ simulator.step();
 
 空白字符会被解析器忽略。指令带可以只运行一次，也可以循环，并可设置开始周期。
 
+模拟器初始化时以计划中最长的原始指令带为准，同步每个机械臂的读取长度（与各带的开始周期无关，也不改写指令带内容）：
+较短指令带在自身内容之后补等待槽位，循环播放按统一长度取模，最长指令带的内容与节拍保持不变。
+`OrthogonalSimulator.tapeLength()` 返回这个统一长度，模拟推进、`motionIntents` 与动画插值都使用同一视图。
+
 `MechanismSpec` 是不可直接实例化的抽象 sealed 基类，只允许两个不可变 final 子类：
 
 - `StationarySpec` 固定臂长并保存 `ArmCombination`，可为单臂或多臂。“静态”只表示长度固定，
@@ -139,8 +143,9 @@ simulator.step();
 
 计划、指令带 UI 等调用方仍可使用多态 `MechanismSpec`。公共访问器为 `initialPosition()`、
 `initialDirection()`、`length()`、`initialLength()`、`tape()`、`combination()`；
-`supportsInstruction(Instruction)` 查询能力，`instructionAt(cycle)` 返回当前周期的有效指令。
-原始 `tape()` 不会删除或改写不受支持的指令；模拟推进和机械臂动画都应读取 `instructionAt(cycle)`。
+`supportsInstruction(Instruction)` 查询能力，`instructionAt(cycle)` 返回当前周期的有效指令；
+`instructionAt(cycle, tapeLength)` 按统一长度读取，供模拟器与动画共用同一节拍。
+原始 `tape()` 不会删除或改写不受支持的指令；模拟推进和机械臂动画都应读取 `instructionAt(...)`。
 长度范围为 `1..3`，省略长度时默认为 1，字符串构造器默认从周期 0 开始循环：
 
 ```java

@@ -110,7 +110,7 @@ public final class GuiDemoMain {
             controlPanel.add(resetBtn);
             controlPanel.add(infoLabel);
 
-            InstructionTapeView tapeView = new InstructionTapeView(plan);
+            InstructionTapeView tapeView = new InstructionTapeView(plan, panel.simulator().tapeLength());
             JPanel bottomPanel = new JPanel(new BorderLayout());
             bottomPanel.add(controlPanel, BorderLayout.NORTH);
             bottomPanel.add(tapeView, BorderLayout.CENTER);
@@ -136,7 +136,11 @@ public final class GuiDemoMain {
     private static final class InstructionTapeView extends JScrollPane {
         private final List<TapeRow> rows = new ArrayList<>();
 
-        private InstructionTapeView(SimulationPlan plan) {
+        /** 统一指令带长度，与模拟器一致；短带在其内容之后进入等待槽位。 */
+        private final int tapeLength;
+
+        private InstructionTapeView(SimulationPlan plan, int tapeLength) {
+            this.tapeLength = tapeLength;
             JPanel content = new JPanel();
             content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
             content.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
@@ -156,7 +160,7 @@ public final class GuiDemoMain {
         }
 
         private void showCycle(long cycle) {
-            rows.forEach(row -> row.showCycle(cycle));
+            rows.forEach(row -> row.showCycle(cycle, tapeLength));
         }
     }
 
@@ -186,12 +190,14 @@ public final class GuiDemoMain {
             }
         }
 
-        private void showCycle(long cycle) {
+        private void showCycle(long cycle, int tapeLength) {
             int currentIndex = -1;
-            if (cycle >= tape.startCycle() && tape.length() > 0) {
+            if (cycle >= tape.startCycle() && tape.length() > 0 && tapeLength > 0) {
                 long elapsed = cycle - tape.startCycle();
                 if (tape.playback() == InstructionTape.Playback.LOOPING) {
-                    currentIndex = (int) (elapsed % tape.length());
+                    // 统一长度决定循环节拍；落在内容之外的填充槽位不高亮任何指令。
+                    int index = (int) (elapsed % tapeLength);
+                    currentIndex = index < tape.length() ? index : -1;
                 } else if (elapsed < tape.length()) {
                     currentIndex = (int) elapsed;
                 }

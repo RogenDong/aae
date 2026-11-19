@@ -1,9 +1,11 @@
 package io.dev.aae;
 
 import io.dev.aae.mech.ArmCombination;
+import io.dev.aae.mech.Instruction;
 import io.dev.aae.mech.InstructionTape;
 import io.dev.aae.mech.MechanismSpec;
 import io.dev.aae.mech.MechanismView;
+import io.dev.aae.mech.PistonSpec;
 import io.dev.aae.mech.StationarySpec;
 
 import io.dev.aae.glyph.GlyphDefinition;
@@ -29,6 +31,70 @@ import org.junit.jupiter.api.Test;
 class OrthogonalSimulatorLifecycleTest {
 
     // ---------- 输入生产 ----------
+
+    @Test
+    void mechanismsShareTheLongestTapeLengthWithoutRewritingTheirTapes() {
+        // 初始化以最长原始指令带为准同步每个机械臂的指令带长度：短循环带在自身内容后补等待，
+        // 统一长度取 max(3, 1) = 3，因此短带每三个周期才再次读到唯一的收缩指令；
+        // startCycle 只决定从哪个周期开始播放，既不参与统一长度，也不对齐各带的播放起点。
+        InstructionTape longer = InstructionTape.parse("s..", 0, InstructionTape.Playback.LOOPING);
+        InstructionTape shorter = InstructionTape.parse("s", 1, InstructionTape.Playback.LOOPING);
+        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(List.of(
+                new PistonSpec(new GridPoint(0, 0), Direction.NORTH, 3, longer),
+                new PistonSpec(new GridPoint(5, 0), Direction.NORTH, 3, shorter))));
+        simulator.init();
+
+        // 周期 1：最长带按原节拍收缩到 2；短带尚未到达起始周期，保持 3。
+        simulator.step();
+        assertFalse(simulator.isHalted(), () -> "halted: " + simulator.warnings());
+        assertEquals(2, simulator.mechanism(0).length());
+        assertEquals(3, simulator.mechanism(1).length());
+
+        // 周期 2：短带到达起始周期并收缩到 2。
+        simulator.step();
+        assertEquals(2, simulator.mechanism(0).length());
+        assertEquals(2, simulator.mechanism(1).length());
+
+        // 周期 3、4：短带进入统一长度的填充槽位并原地等待；若没有统一长度，它会在周期 3 就再次收缩。
+        simulator.step();
+        assertEquals(2, simulator.mechanism(0).length());
+        assertEquals(2, simulator.mechanism(1).length(), "填充槽位把第二次收缩推迟到统一周期的末尾");
+        simulator.step();
+        assertEquals(1, simulator.mechanism(0).length());
+        assertEquals(2, simulator.mechanism(1).length());
+
+        // 周期 5：短带走完统一长度 3 个槽位后重新读到唯一的收缩指令，收缩到 1。
+        simulator.step();
+        assertEquals(1, simulator.mechanism(0).length());
+        assertEquals(1, simulator.mechanism(1).length());
+
+        // 原始指令带完全未被改写：长度、起始周期、播放模式与单带读取结果都保持构造时的语义。
+        assertEquals(longer, simulator.plan().mechanisms().get(0).tape());
+        assertEquals(shorter, simulator.plan().mechanisms().get(1).tape());
+        assertEquals(3, longer.length());
+        assertEquals(1, shorter.length());
+        assertEquals(0, longer.startCycle());
+        assertEquals(1, shorter.startCycle());
+        assertEquals(InstructionTape.Playback.LOOPING, shorter.playback());
+        // 单带自身语义不变：起始周期之前是等待，之后按原始长度 1 每周期重复同一条收缩指令。
+        assertEquals(Instruction.WAIT, shorter.instructionAt(0));
+        assertEquals(Instruction.RETRACT_PISTON, shorter.instructionAt(1));
+        assertEquals(Instruction.RETRACT_PISTON, shorter.instructionAt(2));
+
+        // 运行视图不可变：重置并重跑同样的周期，得到完全一致的长度轨迹。
+        List<Integer> firstRun = List.copyOf(mechanismLengths(simulator));
+        simulator.reset();
+        simulator.run(5);
+        assertEquals(firstRun, mechanismLengths(simulator));
+    }
+
+    private static List<Integer> mechanismLengths(OrthogonalSimulator simulator) {
+        List<Integer> lengths = new ArrayList<>();
+        for (MechanismView view : simulator.mechanisms()) {
+            lengths.add(view.length());
+        }
+        return lengths;
+    }
 
     @Test
     void inputRefillsAfterTransportAndOutputConsumesAfterRelease() {
@@ -257,8 +323,10 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void completionRequiresEveryOutputToReachTheTarget() {
+        // 初始化把两条指令带同步到最长长度 6：较短的 ".fgrt" 尾部补一个等待槽位，
+        // 单次往返由 5 个周期变成 6 个周期，因此两个输出分别在周期 3/4 首次落地。
         OrthogonalSimulator simulator = completionSimulator(2);
-        simulator.run(9);
+        simulator.run(10);
         assertEquals(2, simulator.outputCount(0));
         assertEquals(1, simulator.outputCount(1));
         long[] snapshot = simulator.outputCounts();
@@ -277,7 +345,7 @@ class OrthogonalSimulatorLifecycleTest {
         assertArrayEquals(new long[] {2, 1}, snapshot);
 
         OrthogonalSimulator strict = completionSimulator(3);
-        strict.run(14);
+        strict.run(16);
         assertEquals(3, strict.outputCount(0));
         assertEquals(2, strict.outputCount(1));
         assertFalse(strict.isComplete());
