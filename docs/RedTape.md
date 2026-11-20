@@ -303,6 +303,21 @@ grid.bond(left, Direction.EAST, (byte) 3, (byte) 2);
 // 该方向已经是 2，因此返回 false 且不改动网格
 ```
 
+## 棋盘范围与越界停机
+
+`new OrthogonalSimulator(plan)` 和 `new OrthogonalSimulator(plan, inventory)` 默认使用无限棋盘，允许负坐标。要使用有界棋盘，在构造时传入宽高：
+
+```java
+new OrthogonalSimulator(plan, 8, 6);
+new OrthogonalSimulator(plan, inventory, 8, 6);
+```
+
+宽高必须为正数，也可用 `BoardLimit.of(width, height)` 连同库存传入构造器；`boardLimit()` 查询当前配置。原点 `(0,0)` 固定在西北角，正 x 向东、正 y 向南，合法坐标为 `0 <= x < width`、`0 <= y < height`。
+
+- **静态布局**：构造模拟器时校验输入、输出模板的每个原子格点、旋转后的全部符文占位、机构初始基座和所有启用抓握点。布局越界时实例在第 0 周期停机，`init()` 不生产也不扣料；`reset()` 无法修正同一个非法布局。
+- **符文**：即时和延迟产物都只能写入自身占位，因此通过布局校验后，无需在符文执行或落盘时重复检查。
+- **运行时**：只检查变换后的机构基座、抓握点和分子原子落点，不采样移动路径。轨道不是机构占位；即使轨道向棋盘外延伸，机构也不能移出棋盘。越界时回滚整个周期（包括库存），记录 `warnings()` 并停机，不向调用方抛出越界异常。
+
 ## 输入、输出与实体意图
 
 `SimulationPlan` 在构造阶段拒绝上述非法重叠，符文定义快照建立后即完成布局校验，

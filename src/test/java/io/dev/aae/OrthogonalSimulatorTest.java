@@ -6,6 +6,7 @@ import io.dev.aae.track.TrackBuilder;
 import io.dev.aae.track.TrackSpec;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
@@ -302,6 +303,41 @@ class OrthogonalSimulatorTest {
                 simulator.mechanism(0).position());
     }
 
+    @Test
+    void boundedBoardUsesNorthWestOriginAndRequiresPositiveDimensions() {
+        // 同一个计划可以配不同棋盘；宽高是列数与行数，而不是最大坐标。
+        SimulationPlan plan = SimulationPlan.of();
+        assertTrue(new OrthogonalSimulator(plan).boardLimit().contains(-1, -1));
+        BoardLimit board = new OrthogonalSimulator(plan, new Inventory(), 3, 2).boardLimit();
+        assertEquals(BoardLimit.of(3, 2), board);
+        assertTrue(board.contains(0, 0));
+        assertTrue(board.contains(2, 1));
+        assertFalse(board.contains(-1, 0));
+        assertFalse(board.contains(0, -1));
+        assertFalse(board.contains(3, 1));
+        assertFalse(board.contains(2, 2));
+        assertThrows(IllegalArgumentException.class, () -> new OrthogonalSimulator(plan, 0, 2));
+        assertThrows(IllegalArgumentException.class, () -> new OrthogonalSimulator(plan, 3, -1));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"-1, 'base (-1,0)'", "1, 'grab point (2,0)'"})
+    void boundedBoardRollsBackWhenEitherBaseOrGrabPointLeaves(long nextX, String expectedWarning) {
+        // 朝东的机械沿轨道走一步：向西只有基座越界，向东则只有抓握点越界。
+        GridPoint origin = new GridPoint(0, 0);
+        SimulationPlan plan = SimulationPlan.withTracks(
+                List.of(new TrackSpec(origin, new GridPoint(nextX, 0))),
+                mechanism(0, 0, Direction.EAST, "g"));
+        OrthogonalSimulator simulator = new OrthogonalSimulator(plan, 2, 1);
+        assertFalse(simulator.isHalted());
+
+        simulator.run(5);
+
+        assertTrue(simulator.isHalted());
+        assertTrue(simulator.warnings().get(0).contains(expectedWarning));
+        assertEquals(origin, simulator.mechanism(0).position());
+        assertEquals(1, simulator.cycle());
+    }
     private static OrthogonalSimulator simulator(MechanismSpec... mechanisms) {
         return new OrthogonalSimulator(SimulationPlan.of(mechanisms));
     }

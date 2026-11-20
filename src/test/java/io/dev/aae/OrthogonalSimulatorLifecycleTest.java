@@ -98,7 +98,9 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void inputRefillsAfterTransportAndOutputConsumesAfterRelease() {
-        OrthogonalSimulator simulator = TestInventory.simulator(shuttlePlan(2, List.of()));
+        // 输入、输出与抓点贴着 2×2 棋盘的边缘，合法布局仍可完成原有运输流程。
+        SimulationPlan plan = shuttlePlan(2, List.of());
+        OrthogonalSimulator simulator = new OrthogonalSimulator(plan, TestInventory.ample(plan), 2, 2);
         assertEquals(0, simulator.boardSize());
         assertFalse(simulator.isComplete());
         simulator.step();
@@ -709,6 +711,76 @@ class OrthogonalSimulatorLifecycleTest {
         return TestInventory.simulator(plan);
     }
 
+    @Test
+    void boundedBoardRejectsInvalidStaticLayoutBeforeProducingInputs() {
+        // 即使先声明了合法输入，后续越界也必须在取料前发现；符文锚点在界内并不足够。
+        InputSpec validInput = InputSpec.single(1, new GridPoint(0, 0), sampleAtom());
+        InputSpec outsideInput = InputSpec.single(new GridPoint(2, 0), otherAtom());
+        OutputSpec outsideOutput = OutputSpec.single(new GridPoint(0, 2), sampleAtom());
+        assertInvalidBoundedLayout(new SimulationPlan(List.of(), List.of(validInput, outsideInput),
+                List.of(), 1), validInput, "input[1] template atom (2,0)");
+        assertInvalidBoundedLayout(new SimulationPlan(List.of(), List.of(validInput),
+                List.of(outsideOutput), 1), validInput, "output[0] template atom (0,2)");
+
+        String type = "test.lifecycle:bounded-layout";
+        try (var handle = GlyphRegistry.global().register(GlyphDefinition.of(type,
+                List.of(new GridPoint(0, 0), new GridPoint(1, 0)),
+                context -> { throw new AssertionError("invalid glyph layout must not run"); }))) {
+            assertInvalidBoundedLayout(new SimulationPlan(List.of(), List.of(), List.of(validInput),
+                    List.of(), List.of(new GlyphSpec(type, new GridPoint(1, 0), Direction.NORTH)), 1),
+                    validInput, "glyph[0] placeholder (1,-1)");
+        }
+        // 朝东分支合法，但同一机构的另一个启用分支朝西越界。
+        var multiArm = new StationarySpec(new GridPoint(0, 1), Direction.EAST, 1,
+                new ArmCombination(0b0101), InstructionTape.empty());
+        assertInvalidBoundedLayout(new SimulationPlan(List.of(multiArm), List.of(validInput), List.of(), 1),
+                validInput, "mechanism[0] grab point (-1,1)");
+    }
+
+    private static void assertInvalidBoundedLayout(SimulationPlan plan, InputSpec validInput, String warning) {
+        OrthogonalSimulator simulator = new OrthogonalSimulator(plan, 2, 2);
+        assertTrue(simulator.isHalted());
+        simulator.init();
+        simulator.step();
+
+        assertTrue(simulator.isHalted());
+        assertEquals(0, simulator.cycle());
+        assertEquals(1, simulator.warnings().size());
+        assertTrue(simulator.warnings().get(0).contains(warning));
+        assertEquals(0, simulator.boardSize());
+        assertEquals(1, simulator.inventory().rawCount(validInput));
+    }
+
+    @Test
+    void boundedBoardRollsBackWhenOnlyTheFarEndOfAMoleculeLeaves() {
+        // 基座与抓握点均在界内，只有分子未直接命中抓握点的一端在第二次平移后越界。
+        GridPoint near = new GridPoint(0, 2);
+        GridPoint far = new GridPoint(0, 3);
+        Atom upper = sampleAtom().withBond(Direction.SOUTH, 2);
+        Atom lower = otherAtom().withBond(Direction.NORTH, 2);
+        InputSpec input = InputSpec.of(1, new AtomPlacement(near, upper), new AtomPlacement(far, lower));
+        SimulationPlan plan = new SimulationPlan(
+                List.of(new StationarySpec(new GridPoint(1, 2), Direction.WEST, InstructionTape.once("fgg"))),
+                List.of(TrackBuilder.start(1, 2).south().south().noLoop()), List.of(input), List.of(), 1);
+        OrthogonalSimulator simulator = new OrthogonalSimulator(plan, 2, 5);
+        simulator.init();
+        simulator.run(2);
+        assertFalse(simulator.isHalted());
+        assertEquals(upper, simulator.atomAt(far));
+        GridPoint edge = new GridPoint(0, 4);
+        assertEquals(lower, simulator.atomAt(edge));
+        List<Long> held = simulator.heldEntities(0);
+
+        simulator.step();
+
+        assertTrue(simulator.isHalted());
+        assertTrue(simulator.warnings().get(0).contains("would move to (0,5)"));
+        assertEquals(new GridPoint(1, 3), simulator.mechanism(0).position());
+        assertEquals(upper, simulator.atomAt(far));
+        assertEquals(lower, simulator.atomAt(edge));
+        assertNull(simulator.atomAt(new GridPoint(0, 5)));
+        assertEquals(held, simulator.heldEntities(0));
+    }
     private static SimulationPlan shuttlePlan(long target, List<GlyphSpec> glyphs) {
         return new SimulationPlan(List.of(mechanism(0, 1, Direction.NORTH, ".fgrt")),
                 List.of(track(0, 1, 1, 1)),

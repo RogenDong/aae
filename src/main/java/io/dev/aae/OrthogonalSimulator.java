@@ -49,10 +49,16 @@ import java.util.stream.Collectors;
  * <p>符文的实例状态、执行上下文与半周期棋盘视图由包级私有的 {@link GlyphRuntime} 持有；
  * 本类保留机构与原子棋盘的运行态、周期事务和输出消费，只在半周期的符文阶段调用它。
  * 两者共享同一份棋盘与实体索引，拆分的是编排逻辑而不是状态。</p>
+ *
+ * <p>默认使用无限棋盘。有界棋盘在构造时校验 I/O、符文占位和机构初始位姿；
+ * 运行时在提交前检查机构基座、抓握点与分子落点，越界时回滚当前周期并停机。</p>
  */
 public final class OrthogonalSimulator {
 
     private final SimulationPlan plan;
+    /** 棋盘坐标范围：无限或原点在西北角的有界棋盘。 */
+    private final BoardLimit boardLimit;
+    private final String layoutViolation;
     /** 机械臂的坐标 x */
     private final long[] x;
     /** 机械臂的坐标 y */
@@ -107,21 +113,56 @@ public final class OrthogonalSimulator {
 
     private long cycle;
 
-    /** 用计划声明的初始原料配额建立一份新库存。 */
+    /** 用计划声明的初始原料配额建立一份新库存；棋盘无限。 */
     public OrthogonalSimulator(SimulationPlan plan) {
         this(plan, new Inventory());
     }
 
     /**
-     * 用调用方提供的库存运行计划。
+     * 用计划声明的初始原料配额建立一份新库存，并限定棋盘为宽 {@code width}、高
+     * {@code height} 的有界棋盘，原点在西北角。
+     *
+     * @throws IllegalArgumentException 宽或高不为正
+     */
+    public OrthogonalSimulator(SimulationPlan plan, long width, long height) {
+        this(plan, new Inventory(), BoardLimit.of(width, height));
+    }
+
+    /**
+     * 用调用方提供的库存运行计划；棋盘无限。
      *
      * <p>构造时把计划里各 {@link InputSpec#stock()} 声明的初始原料配额注入库存（在已有余量
      * 上原子累加）。运行期请通过 {@link #inventory()} 维护原料与产品；模拟器重置不会清空
      * 或恢复库存。</p>
      */
     public OrthogonalSimulator(SimulationPlan plan, Inventory inventory) {
+        this(plan, inventory, BoardLimit.unbounded());
+    }
+
+    /**
+     * 用调用方提供的库存运行计划，并限定棋盘为宽 {@code width}、高 {@code height} 的有界棋盘。
+     *
+     * <p>库存配额注入与无限棋盘一致。坐标约束见
+     * {@link #OrthogonalSimulator(SimulationPlan, Inventory, BoardLimit)}。</p>
+     *
+     * @throws IllegalArgumentException 宽或高不为正
+     */
+    public OrthogonalSimulator(SimulationPlan plan, Inventory inventory, long width, long height) {
+        this(plan, inventory, BoardLimit.of(width, height));
+    }
+
+    /**
+     * 用调用方提供的库存与棋盘范围运行计划。
+     *
+     * <p>有界棋盘锁定原点 {@code (0,0)} 为西北角、只向正 x 与正 y 展开：机械臂的每个启用抓握点
+     * 与棋盘上每个原子的格点都必须落在 {@code [0,width) × [0,height)} 内，越界即按确定性停机
+     * 规则记录警告并停止推进。无界棋盘（{@link BoardLimit#unbounded()}）不做任何坐标限制。</p>
+     */
+    public OrthogonalSimulator(SimulationPlan plan, Inventory inventory, BoardLimit limit) {
         this.plan = Objects.requireNonNull(plan, "plan");
         this.inventory = Objects.requireNonNull(inventory, "inventory");
+        this.boardLimit = Objects.requireNonNull(limit, "limit");
+        this.layoutViolation = findLayoutViolation();
 
         int size = plan.size();
         this.x = new long[size];
@@ -185,6 +226,16 @@ public final class OrthogonalSimulator {
     }
 
     /**
+     * 本次运行使用的棋盘坐标范围。
+     *
+     * <p>无限棋盘返回 {@link BoardLimit#unbounded()}；有界棋盘的原点在西北角，合法格点是
+     * {@code [0,width) × [0,height)}。渲染层与调用方据此决定可绘制区域。</p>
+     */
+    public BoardLimit boardLimit() {
+        return boardLimit;
+    }
+
+    /**
      * 本次运行使用的原料/产品库存。
      *
      * <p>调用方通过它补货（{@link Inventory#replenish(InputSpec, long)}）、查询余量并取走产品
@@ -219,8 +270,9 @@ public final class OrthogonalSimulator {
 
     public void init() {
         reset();
-        // 预先输入生产：此时没有任何符文预留，预留集合为空；原料不足的输入会被跳过。
-        spawnInputs();
+        if (!halted) {
+            spawnInputs();
+        }
     }
 
     /**
@@ -251,6 +303,9 @@ public final class OrthogonalSimulator {
             length[i] = (byte) mechanism.initialLength();
         }
         glyphs.reset();
+        if (layoutViolation != null) {
+            recordHalt(layoutViolation);
+        }
     }
 
     /**
@@ -349,6 +404,13 @@ public final class OrthogonalSimulator {
         if (phase.isSecondHalf()) {
             for (int i = 0; i < mechanisms.size(); i++) {
                 transform(i, pendingInstructions[i]);
+                if (boardLimit.isBounded()) {
+                    String violation = mechanismBoundsViolation(i, new GridPoint(nextX[i], nextY[i]),
+                            Direction.fromOrdinal(nextDirection[i]), nextLength[i]);
+                    if (violation != null) {
+                        haltWithWarning(violation);
+                    }
+                }
             }
         }
         // 5. 延迟产物落盘：按登记顺序把目标格点已经让开的产物写进棋盘，仍然被占用的留队，
@@ -360,7 +422,23 @@ public final class OrthogonalSimulator {
         //    若实体运动落到其上则抛出 GlyphExecutionException 回滚整周期；普通同格冲突
         //    与尚未落盘的延迟产物压到静止原子上则走警告停机路径。
         Set<GridPoint> reservedCells = glyphs.reservedCells();
-        List<AtomChange> changes = computeAtomChanges(intentsByEntity);
+        List<AtomChange> changes;
+        try {
+            changes = computeAtomChanges(intentsByEntity);
+        } catch (ArithmeticException overflow) {
+            if (boardLimit.isBounded()) {
+                haltWithWarning("atom destination exceeds coordinate range, outside " + boardLimit);
+            }
+            throw overflow;
+        }
+        if (boardLimit.isBounded()) {
+            for (AtomChange change : changes) {
+                if (!boardLimit.contains(change.newPosition())) {
+                    haltWithWarning("entity #" + change.entity() + " would move to "
+                            + change.newPosition() + ", outside " + boardLimit);
+                }
+            }
+        }
         if (!checkAtomOverlaps(changes, reservedCells)) {
             glyphs.clearJustClaimed();
             return;
@@ -597,12 +675,77 @@ public final class OrthogonalSimulator {
         haltWithWarning("mechanism[" + mechIndex + "] overlaps entity #" + occupant + " at " + pos);
     }
 
-    /** 记录停机警告：写入警告列表并输出到标准错误流。 */
+    /** 运行中停机时用信号中止周期，由 step() 统一回滚。 */
     private void haltWithWarning(String warning) {
+        recordHalt(warning);
+        throw new HaltSignal();
+    }
+
+    private void recordHalt(String warning) {
         warnings.add("cycle " + cycle + ": " + warning + "; simulator halted");
         System.err.println("[orthogonal] WARNING: " + warning);
         halted = true;
-        throw new HaltSignal();
+    }
+
+    /** 静态占位只校验一次：符文的即时和延迟产物都只能使用这些占位。 */
+    private String findLayoutViolation() {
+        if (!boardLimit.isBounded()) {
+            return null;
+        }
+        String violation = ioBoundsViolation("input", plan.inputs());
+        if (violation != null) {
+            return violation;
+        }
+        violation = ioBoundsViolation("output", plan.outputs());
+        if (violation != null) {
+            return violation;
+        }
+        for (int i = 0; i < plan.glyphs().size(); i++) {
+            GlyphSpec glyph = plan.glyphs().get(i);
+            for (GridPoint offset : plan.glyphDefinition(glyph.typeId()).placeholder()) {
+                GridPoint cell = glyph.worldPoint(offset);
+                if (!boardLimit.contains(cell)) {
+                    return "glyph[" + i + "] placeholder " + cell + " is outside " + boardLimit;
+                }
+            }
+        }
+        for (int i = 0; i < plan.size(); i++) {
+            MechanismSpec mechanism = plan.mechanisms().get(i);
+            violation = mechanismBoundsViolation(i, mechanism.initialPosition(),
+                    mechanism.initialDirection(), mechanism.initialLength());
+            if (violation != null) {
+                return violation;
+            }
+        }
+        return null;
+    }
+
+    private String ioBoundsViolation(String kind, List<? extends IOSpec> specs) {
+        for (int i = 0; i < specs.size(); i++) {
+            for (AtomPlacement atom : specs.get(i).atoms()) {
+                if (!boardLimit.contains(atom.position())) {
+                    return kind + "[" + i + "] template atom " + atom.position() + " is outside " + boardLimit;
+                }
+            }
+        }
+        return null;
+    }
+
+    private String mechanismBoundsViolation(int index, GridPoint base, Direction facing, int armLength) {
+        if (!boardLimit.contains(base)) {
+            return "mechanism[" + index + "] base " + base + " is outside " + boardLimit;
+        }
+        ArmCombination combination = plan.mechanisms().get(index).combination();
+        try {
+            for (GridPoint claw : combination.grabPosArray(base, facing, armLength)) {
+                if (claw != null && !boardLimit.contains(claw)) {
+                    return "mechanism[" + index + "] grab point " + claw + " is outside " + boardLimit;
+                }
+            }
+        } catch (ArithmeticException overflow) {
+            return "mechanism[" + index + "] grab point exceeds coordinate range, outside " + boardLimit;
+        }
+        return null;
     }
 
     private void collectIntents(
