@@ -8,6 +8,8 @@ import java.util.*;
  */
 public abstract class IOSpec {
     protected List<AtomPlacement> atoms;
+    /** 库存物料签名：与模板在世界坐标上的位置无关，只描述分子形状与键位。 */
+    private final MaterialSignature signature;
     protected IOSpec(List<AtomPlacement> atoms) {
         Objects.requireNonNull(atoms, "atoms");
         if (atoms.isEmpty()) {
@@ -23,10 +25,21 @@ public abstract class IOSpec {
             }
         }
         validateMolecule(atomsAt);
+        this.signature = MaterialSignature.of(this.atoms);
     }
 
     public List<AtomPlacement> atoms() {
         return Collections.unmodifiableList(atoms);
+    }
+
+    /**
+     * 该模板的库存物料签名：以模板锚点为原点规范化后的分子形状。
+     *
+     * <p>{@link Inventory} 用它识别“同一种物料”，因此整体平移的相同模板共享同一份余量；
+     * 模板在棋盘上的实际放置位置仍由 {@link #atoms()} 的绝对格点决定。</p>
+     */
+    public MaterialSignature signature() {
+        return signature;
     }
 
     /** 模板的原子数量。 */

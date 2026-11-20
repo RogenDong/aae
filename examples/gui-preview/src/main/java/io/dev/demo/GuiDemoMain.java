@@ -26,12 +26,15 @@ public final class GuiDemoMain {
 
     private static final List<GlyphRegistry.GlyphHandle> GLYPH_HANDLES = new ArrayList<>();
 
+    /** 演示计划里每条输入声明的初始原料配额；库存耗尽后该输入停止生产。 */
+    private static final long INPUT_STOCK = 64;
+
     public static SimulationPlan createSamplePlan() {
-        var input1 = InputSpec.of(
+        var input1 = InputSpec.of(INPUT_STOCK,
                 AtomPlacement.of(-3, 1, Atom.of(7).withBond(Direction.NORTH, OMBonds.NORMAL.code)),
                 AtomPlacement.of(-3, 0, OMAtom.earth().withBond(Direction.SOUTH, OMBonds.NORMAL.code)));
-        var input2 = InputSpec.of(AtomPlacement.of(0, 1, OMAtom.water()));
-        var input3 = InputSpec.of(AtomPlacement.of(3, 0, OMAtom.water()));
+        var input2 = InputSpec.single(INPUT_STOCK, point(0, 1), OMAtom.water());
+        var input3 = InputSpec.single(INPUT_STOCK, point(3, 0), OMAtom.water());
 
         // 提交位置
         var output = OutputSpec.of(
@@ -60,9 +63,9 @@ public final class GuiDemoMain {
                 ),
                 List.of(track),
                 List.of(input1, input2, input3,
-                        InputSpec.of(AtomPlacement.of(-2, 2, OMAtom.water())),
-                        InputSpec.of(AtomPlacement.of(-2, 3, OMAtom.earth())),
-                        InputSpec.of(AtomPlacement.of(-5, 2, OMAtom.water()))),
+                        InputSpec.single(INPUT_STOCK, point(-2, 2), OMAtom.water()),
+                        InputSpec.single(INPUT_STOCK, point(-2, 3), OMAtom.earth()),
+                        InputSpec.single(INPUT_STOCK, point(-5, 2), OMAtom.water())),
                 List.of(output,
                         OutputSpec.of(AtomPlacement.of(-3, 3, OMAtom.water())),
                         OutputSpec.of(AtomPlacement.of(-4, 3, OMAtom.earth())),

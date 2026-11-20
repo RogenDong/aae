@@ -27,10 +27,11 @@ import java.util.stream.Collectors;
  *   <li>提交：所有变换成功后统一替换当前状态，并落盘被抓住的分子；</li>
  *   <li>延迟产物：在机构运动之后按登记顺序落盘目标格点已经让开的符文产物，仍然被占用的
  *       留队到当前整数周期的第二半周期结束；</li>
- *   <li>生产：占位空闲的输入把模板原子放进棋盘，与延迟产物格点相交的模板整份跳过；</li>
+ *   <li>生产：占位空闲的输入从 {@link Inventory} 扣减一份原料并把模板原子放进棋盘，原料
+ *       不足或与延迟产物格点相交的模板整份跳过；</li>
  *   <li>符文：换用本半周期唯一的棋盘视图（上一个周期的临时键已在周期开始时清除），
  *       按计划声明顺序执行全部符文，后一个能看到前一个已提交的变更；</li>
- *   <li>消费：输出消费类型、长期键与位置完全一致的未抓取分子。</li>
+ *   <li>消费：输出消费类型、长期键与位置完全一致的未抓取分子，并把一份对应产品提交到库存。</li>
  * </ol>
  *
  * <p>尚未落盘的延迟产物格点在同一半周期内就算已占用：机构运动落到这些格点时抛出
@@ -39,8 +40,8 @@ import java.util.stream.Collectors;
  *
  * <p>因此输入和输出可能在同一周期的两个半周期分别生产或消费；两个半周期都结束后
  * {@code cycle} 才加一。整个 {@link #step()} 由变更日志保护：任何异常都会回滚本周期开始的
- * 状态（含符文实例状态与延迟产物队列）、把模拟器标记为 {@code halted}，并把同一个异常对象
- * 原样抛给调用方。</p>
+ * 状态（含符文实例状态、延迟产物队列与库存余量）、把模拟器标记为 {@code halted}，并把同一个
+ * 异常对象原样抛给调用方。</p>
  *
  * <p>停机是确定性的业务规则，不是碰撞检测：一旦停机，后续 {@link #step()} 和
  * {@link #run(long)} 不再推进任何状态，{@link #reset()} 才能恢复运行。</p>
@@ -94,6 +95,9 @@ public final class OrthogonalSimulator {
     private final List<Set<Long>> heldByMechanism;
     private final long[] outputCounts;
 
+    /** 原料与产品库存：输入从这里的原料取料，输出把产品提交到这里。 */
+    private final Inventory inventory;
+
     /** 符文运行态：实例状态、执行上下文与半周期棋盘视图都由它持有。 */
     private final GlyphRuntime glyphs;
 
@@ -103,8 +107,21 @@ public final class OrthogonalSimulator {
 
     private long cycle;
 
+    /** 用计划声明的初始原料配额建立一份新库存。 */
     public OrthogonalSimulator(SimulationPlan plan) {
+        this(plan, new Inventory());
+    }
+
+    /**
+     * 用调用方提供的库存运行计划。
+     *
+     * <p>构造时把计划里各 {@link InputSpec#stock()} 声明的初始原料配额注入库存（在已有余量
+     * 上原子累加）。运行期请通过 {@link #inventory()} 维护原料与产品；模拟器重置不会清空
+     * 或恢复库存。</p>
+     */
+    public OrthogonalSimulator(SimulationPlan plan, Inventory inventory) {
         this.plan = Objects.requireNonNull(plan, "plan");
+        this.inventory = Objects.requireNonNull(inventory, "inventory");
 
         int size = plan.size();
         this.x = new long[size];
@@ -135,6 +152,7 @@ public final class OrthogonalSimulator {
                 this::heldEntityIds,
                 this::getNextEntityId);
         reset();
+        inventory.replenishInitialStocks(plan.inputs());
     }
 
     /** 全部机构当前持有的实体并集，供符文棋盘视图判断“被抓取”。 */
@@ -166,6 +184,17 @@ public final class OrthogonalSimulator {
         return plan;
     }
 
+    /**
+     * 本次运行使用的原料/产品库存。
+     *
+     * <p>调用方通过它补货（{@link Inventory#replenish(InputSpec, long)}）、查询余量并取走产品
+     * （{@link Inventory#takeProduct(OutputSpec, long)}）。库存参与周期事务：{@link #step()}
+     * 抛出异常回滚时，本周期内扣减的原料与提交的产品也会一并撤销。</p>
+     */
+    public Inventory inventory() {
+        return inventory;
+    }
+
     public long cycle() {
         return cycle;
     }
@@ -190,10 +219,16 @@ public final class OrthogonalSimulator {
 
     public void init() {
         reset();
-        // 预先输入生产：此时没有任何符文预留，预留集合为空。
+        // 预先输入生产：此时没有任何符文预留，预留集合为空；原料不足的输入会被跳过。
         spawnInputs();
     }
 
+    /**
+     * 恢复模拟器的机构、棋盘、符文和输出计数运行态。
+     *
+     * <p>库存属于外部运行资源：{@code reset()} 不清空、不回滚、也不重新注入计划配额，
+     * 因此在 {@code init()} 或 {@code reset()} 之前补入的原料以及已提交但尚未取走的产品都会保留。</p>
+     */
     public void reset() {
         cycle = 0;
         halted = false;
@@ -367,14 +402,14 @@ public final class OrthogonalSimulator {
         }
         glyphs.clearJustClaimed();
 
-        // 9. 输入生产：模板任一格冲突就整份跳过。
+        // 9. 输入生产：从库存取原料，模板任一格冲突或原料不足就整份跳过。
         spawnInputs();
 
         // 10. 符文阶段：换用本半周期的棋盘视图（半周期内全部符文共用同一个视图），按计划
         //     顺序执行全部符文；后一个符文能看到前一个在同一半周期提交的变更。
         glyphs.runGlyphStage(phase);
 
-        // 11. 消费输出。
+        // 11. 消费输出：把产品提交到库存。
         consumeOutputs();
     }
 
@@ -1004,12 +1039,21 @@ public final class OrthogonalSimulator {
         }
     }
 
+    /**
+     * 输入生产：模板足迹空闲时从库存扣减一份原料并把模板放上棋盘。
+     *
+     * <p>先检查足迹再扣料，因此占位被占用时不会消耗原料；原料不足时整份输入跳过，
+     * 也不放置原子。原料被扣减后模板块的放置必然成功，不存在“扣了料却没生产”的中间态。</p>
+     */
     private void spawnInputs() {
         blocked: for (InputSpec input : plan.inputs()) {
             for (AtomPlacement placement : input.atoms()) {
                 if (board.contains(placement.position())) {
                     continue blocked;
                 }
+            }
+            if (!inventory.consumeRaw(input, 1)) {
+                continue;
             }
             for (AtomPlacement placement : input.atoms()) {
                 long entity = nextEntityId++;
@@ -1018,6 +1062,7 @@ public final class OrthogonalSimulator {
         }
     }
 
+    /** 输出消费：匹配成功时移除棋盘原子、把一份产品提交到库存，并累加输出计数。 */
     private void consumeOutputs() {
         List<OutputSpec> outputs = plan.outputs();
         for (int index = 0; index < outputs.size(); index++) {
@@ -1031,6 +1076,7 @@ public final class OrthogonalSimulator {
                 positionOfEntity.remove(entity);
                 grabCounts.remove(entity);
             }
+            inventory.submitProduct(output);
             outputCounts[index]++;
         }
     }
@@ -1067,6 +1113,7 @@ public final class OrthogonalSimulator {
                 held,
                 Arrays.copyOf(outputCounts, outputCounts.length),
                 nextEntityId,
+                inventory.captureState(),
                 glyphs.captureStates(),
                 glyphs.pendingSpawns());
     }
@@ -1098,6 +1145,7 @@ public final class OrthogonalSimulator {
         }
         System.arraycopy(snapshot.outputCounts(), 0, outputCounts, 0, outputCounts.length);
         nextEntityId = snapshot.nextEntityId();
+        inventory.restoreState(snapshot.inventory());
         glyphs.restoreStates(snapshot.glyphInstances());
         glyphs.rewindAfterRollback();
         glyphs.restorePendingSpawns(snapshot.pendingSpawns());
@@ -1116,6 +1164,7 @@ public final class OrthogonalSimulator {
             List<List<Long>> held,
             long[] outputCounts,
             long nextEntityId,
+            Inventory.Snapshot inventory,
             List<GlyphInstance<?>> glyphInstances,
             List<GlyphBoardView.PendingSpawn> pendingSpawns) {
     }

@@ -326,7 +326,7 @@ class CoHoldingTest {
         // 分子参数均通过生产校验；这里只播种一次性棋盘初态，不声明会自动补料的生产 I/O。
         // 同步双向实体索引与后续编号，连通关系直接从当前棋盘读取，保持共持与回滚的运行态语义。
         new SimulationPlan(arms, tracks, List.of(molecules), List.of(), 1);
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(arms, tracks));
+        OrthogonalSimulator simulator = TestInventory.simulator(new SimulationPlan(arms, tracks));
         simulator.init();
         try {
             var boardField = OrthogonalSimulator.class.getDeclaredField("board");
@@ -358,7 +358,7 @@ class CoHoldingTest {
 
     private static OrthogonalSimulator simulator(
             List<MechanismSpec> arms, List<TrackSpec> tracks, InputSpec input) {
-        OrthogonalSimulator simulator = new OrthogonalSimulator(
+        OrthogonalSimulator simulator = TestInventory.simulator(
                 new SimulationPlan(arms, tracks, List.of(input), List.of(), 1));
         simulator.init();
         return simulator;

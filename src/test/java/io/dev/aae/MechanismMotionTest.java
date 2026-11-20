@@ -548,7 +548,7 @@ class MechanismMotionTest {
                 Direction.WEST,
                 1,
                 InstructionTape.once("fw"));
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
+        OrthogonalSimulator simulator = TestInventory.simulator(new SimulationPlan(
                 List.of(east, west),
                 List.of(InputSpec.single(new GridPoint(1, 0), sampleAtom())),
                 List.of(),
@@ -708,7 +708,7 @@ class MechanismMotionTest {
         // 每个参数仍经生产校验为合法单分子，但这里只描述一次性棋盘初态，不声明持续生产的 I/O。
         // 同步棋盘、双向实体索引和编号；连通关系直接读取当前棋盘，避免补料干扰往返运动与空格断言。
         new SimulationPlan(arms, tracks, List.of(molecules), List.of(), 1);
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(arms, tracks));
+        OrthogonalSimulator simulator = TestInventory.simulator(new SimulationPlan(arms, tracks));
         simulator.init();
         try {
             var boardField = OrthogonalSimulator.class.getDeclaredField("board");
@@ -739,7 +739,7 @@ class MechanismMotionTest {
     }
 
     private static OrthogonalSimulator simulator(MechanismSpec mechanism) {
-        return new OrthogonalSimulator(SimulationPlan.of(mechanism));
+        return TestInventory.simulator(SimulationPlan.of(mechanism));
     }
 
     private static Atom sampleAtom() {

@@ -71,9 +71,8 @@ macOS / Linux：
 ```
 
 `build` 会构建核心库和 `example` 子项目，运行各自的 JUnit 测试，并生成
-`build/libs/aae-0.1.2.jar` 以及 `examples/gui-preview/build/` 下的示例 JAR 和应用分发包。
-核心库测试报告位于 `build/reports/tests/test/index.html`，示例测试报告位于
-`examples/gui-preview/build/reports/tests/test/index.html`。仅运行测试可执行
+`build/libs/aae-0.4.0.jar` 以及 `examples/gui-preview/build/` 下的示例 JAR 和应用分发包。
+核心库测试报告位于 `build/reports/tests/test/index.html`。仅运行测试可执行
 `.\gradlew.bat test`（macOS / Linux 使用 `./gradlew test`）。
 
 运行 GUI 示例（`GuiDemoMain` 位于 `examples/gui-preview/src/main/java`，
@@ -244,7 +243,7 @@ SimulationPlan plan = new SimulationPlan(
 越界抛出 `IllegalArgumentException`。`Molecule.countOf(int)` 按完整类型计数；
 `Atom.withBond(Direction, byte)` 与 `AtomGrid.bond(...)` 继续接收键字节。
 
-实现内部只依赖两条数值约定：
+实现内部只依赖数值约定：
 
 | 数值 | 含义 |
 |---|---|
@@ -312,8 +311,8 @@ grid.bond(left, Direction.EAST, (byte) 3, (byte) 2);
 符文按实例位置和朝向转换后的全部 `placeholder` 格点检查，不使用包围矩形。
 这些检查只在计划构造时执行；运行期仍可把分子搬到符文或输出上进行处理。
 
-带输入输出的计划额外维护一个原子棋盘，每个周期的推进顺序是：解码 → 意图收集 →
-冲突检查 → 机构与实体变换 → 提交 → 输入生产 → 输出匹配 → 周期加一。
+带输入输出的计划额外维护一个原子棋盘和一份 `Inventory`，每个周期的推进顺序是：解码 →
+意图收集 → 冲突检查 → 机构与实体变换 → 提交 → 库存取料生产 → 输出匹配入库 → 周期加一。
 
 ```java
 SimulationPlan plan = new SimulationPlan(
@@ -323,21 +322,37 @@ SimulationPlan plan = new SimulationPlan(
         List.of(new TrackSpec(List.of(
                 new GridPoint(0, 1),
                 new GridPoint(-1, 1)))),
-        List.of(InputSpec.single(new GridPoint(0, 0), Atom.of(1))),
+        List.of(InputSpec.single(4, new GridPoint(0, 0), Atom.of(1))),
         List.of(OutputSpec.single(new GridPoint(-1, 0), Atom.of(1))),
         1);
 
 OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
+simulator.inventory().replenish(plan.inputs().get(0), 1); // 运行期补货（可选）
 simulator.run(4);
 // simulator.isComplete() == true, simulator.outputCount(0) == 1
+// simulator.inventory().productCount(plan.outputs().get(0)) == 1
+
+long shipped = simulator.inventory().takeProduct(plan.outputs().get(0), 1); // 外部消费产品
+// shipped == 1，产品余量归零；outputCount(0) 仍为 1，完成条件不回退
 ```
 
-- 输入足迹（模板全部格点）空闲时，输入在每个周期末尾生产模板原子；任一格点被
-  占用则跳过该周期。模板原子的四方向键写在 `Atom.bondCodes` 中，带键分子原样生产。
+- `InputSpec.single(stock, position, atom)` / `InputSpec.of(stock, atoms...)` 声明该输入的
+  初始原料配额；不写配额时为 `InputSpec.NO_STOCK`，必须先用
+  `simulator.inventory().replenish(input, n)` 补货才会生产。模拟器构造时把计划声明的配额
+  一次性注入库存。`reset()` 保留库存、不重新注入配额；`init()` 重置后从现有库存取料，
+  因此调用方可以在初始化前补货。
+- 输入足迹（模板全部格点）空闲且库存有余量时，输入在每个周期末尾扣减一份原料并生产模板
+  原子；占位被占用或原料不足则跳过该周期，且不会扣料。模板原子的四方向键写在
+  `Atom.bondCodes` 中，带键分子原样生产。
 - 输出模板构造时必须是完整、互惠且连通的单个分子，不允许临时键或指向模板外的键。
   每个半周期的符文阶段之后，逐个检查模板坐标上的实体、抓握计数和完整 `Atom` 值；
-  全部匹配后按模板坐标移除原子及实体索引，输出计数加一。全部输出达到 `targetOutputs`
-  时 `isComplete()` 为真。
+  全部匹配后按模板坐标移除原子及实体索引、提交一份产品到库存，输出计数加一。全部输出
+  达到 `targetOutputs` 时 `isComplete()` 为真。
+- 库存条目按 `IOSpec.signature()` 的规范化物料签名识别：原子类型、键位与相对排布完全相同、
+  只是整体平移的模板共享同一份原料余量；旋转、换键或换原子类型都是另一种物料。原料与产品
+  分开记账，取产品不影响原料余量，也不改变输出计数。
+- 库存参与周期事务：`step()` 抛出异常回滚时，本周期扣掉的原料和提交的产品一并恢复。
+  取货接口 `takeRaw`/`takeProduct` 只取走现有余量，不会把库存变成负数。
 - 移动与转向会携带机构持有的实体（抓取面向格点上的整个分子）；`f` 在已经持有
   实体时是空操作，`r` 在没有持有实体时是空操作。多个机构可以同时持有同一实体。
 
@@ -360,30 +375,3 @@ simulator.run(4);
 
 当前源码树未包含 JMH 基准代码，因此 Gradle 构建仅配置核心库与 JUnit 测试。
 后续添加基准代码时，再引入独立的 JMH source set 或子项目。
-
-## 版本管理
-
-仓库使用 Git 管理。建议后续开发保持每个提交只包含一个可验证主题，并在提交前执行：
-
-```powershell
-.\gradlew.bat clean build
-git status --short
-```
-
-符文行为访问棋盘的唯一定位方式是当前 `GlyphDefinition.placeholder` 的 **0-based 索引**。
-`InputSlot.position()`、`OutputSlot.position()` 和所有 `GlyphReader` / `GlyphBoard` 方法
-都使用该索引；槽位必须属于定义的 placeholder，输入、输出各自不能重复，也不能共享索引。
-非法索引抛出 `IndexOutOfBoundsException`，消息包含索引、占位数量和符文类型。
-
-所有 `InputSlot` 都要求格点上有原子，`requiredAtomType()` 返回独立的 `OptionalInt` 类型约束。
-`occupied(position)` 的类型约束为空；`of(position, type)`、`bonded(...)` 及接收 `int` 类型的
-构造器精确匹配 `0..0xFFFF` 的类型，负数及越界类型均被拒绝。
-完整构造器可用 `OptionalInt.empty()` 组合不限制类型、键要求和自定义判据，或用
-`OptionalInt.of(type)` 附加精确类型约束；`requiredAtomType` 不接受 `null`。
-
-每个半周期共用一个棋盘视图，每次执行符文前重新绑定当前实例，索引按该定义和实例朝向
-解析成世界格点。方向参数使用世界方向；方向键操作只允许连接当前 placeholder 内的邻居，
-形状外的键读取返回 `false`（或不报告该方向），写操作返回 `SKIPPED`。
-`moleculeAt(index)` 从合法索引开始返回完整连通分子的只读值；
-`GlyphContext.worldPoint(index)` 和 `neighbor(index, direction)` 通过占位索引提供几何查询；
-上下文仅保留 `toLocal(GridPoint)` 用于世界坐标到局部坐标的逆变换。

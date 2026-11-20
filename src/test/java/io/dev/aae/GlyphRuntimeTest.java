@@ -815,7 +815,7 @@ class GlyphRuntimeTest {
         try (var handle = GlyphRegistry.global().register(GlyphDefinition.single(type, context -> {}))) {
             var populated = simulatorOf(List.of(), List.of(), List.of(),
                     glyphs(new GlyphSpec(type, new GridPoint(2, 0))));
-            var empty = new OrthogonalSimulator(SimulationPlan.of());
+            var empty = TestInventory.simulator(SimulationPlan.of());
             for (var simulator : List.of(empty, populated)) {
                 assertThrows(IndexOutOfBoundsException.class, () -> simulator.glyphState(-1));
                 assertThrows(IndexOutOfBoundsException.class,
@@ -927,7 +927,7 @@ class GlyphRuntimeTest {
             List<InputSpec> inputs,
             List<OutputSpec> outputs,
             List<GlyphSpec> glyphs) {
-        return new OrthogonalSimulator(new SimulationPlan(
+        return TestInventory.simulator(new SimulationPlan(
                 mechanisms, tracks, inputs, outputs, glyphs, 1));
     }
 

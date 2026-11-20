@@ -39,7 +39,7 @@ class OrthogonalSimulatorLifecycleTest {
         // startCycle 只决定从哪个周期开始播放，既不参与统一长度，也不对齐各带的播放起点。
         InstructionTape longer = InstructionTape.parse("s..", 0, InstructionTape.Playback.LOOPING);
         InstructionTape shorter = InstructionTape.parse("s", 1, InstructionTape.Playback.LOOPING);
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(List.of(
+        OrthogonalSimulator simulator = TestInventory.simulator(new SimulationPlan(List.of(
                 new PistonSpec(new GridPoint(0, 0), Direction.NORTH, 3, longer),
                 new PistonSpec(new GridPoint(5, 0), Direction.NORTH, 3, shorter))));
         simulator.init();
@@ -98,7 +98,7 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void inputRefillsAfterTransportAndOutputConsumesAfterRelease() {
-        OrthogonalSimulator simulator = new OrthogonalSimulator(shuttlePlan(2, List.of()));
+        OrthogonalSimulator simulator = TestInventory.simulator(shuttlePlan(2, List.of()));
         assertEquals(0, simulator.boardSize());
         assertFalse(simulator.isComplete());
         simulator.step();
@@ -137,7 +137,7 @@ class OrthogonalSimulatorLifecycleTest {
             if (context.cycle() == 2) inputIds.add(observed[0].entityAt(new GridPoint(0, 0)));
             if (context.cycle() == 3) outputCounts.add(observed[0].outputCount(0));
         }))) {
-            observed[0] = new OrthogonalSimulator(shuttlePlan(1,
+            observed[0] = TestInventory.simulator(shuttlePlan(1,
                     List.of(new GlyphSpec(type, new GridPoint(9, 9)))));
             observed[0].run(4);
             assertEquals(2, inputIds.size());
@@ -159,7 +159,7 @@ class OrthogonalSimulatorLifecycleTest {
                 List.of(),
                 1);
 
-        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
+        OrthogonalSimulator simulator = TestInventory.simulator(plan);
         simulator.run(3);
 
         assertEquals(1, simulator.boardSize());
@@ -175,7 +175,7 @@ class OrthogonalSimulatorLifecycleTest {
                 AtomPlacement.of(0, 0, eastBonded),
                 AtomPlacement.of(1, 0, westBonded));
 
-        OrthogonalSimulator simulator = new OrthogonalSimulator(
+        OrthogonalSimulator simulator = TestInventory.simulator(
                 new SimulationPlan(List.of(), List.of(input), List.of(), 1));
         simulator.step();
 
@@ -356,7 +356,7 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void planWithoutOutputsIsNeverComplete() {
-        var simulator = new OrthogonalSimulator(SimulationPlan.of());
+        var simulator = TestInventory.simulator(SimulationPlan.of());
         assertFalse(simulator.isComplete());
         assertArrayEquals(new long[0], simulator.outputCounts());
     }
@@ -379,7 +379,7 @@ class OrthogonalSimulatorLifecycleTest {
             }
         }))) {
             SimulationPlan base = completionSimulator(2).plan();
-            var simulator = new OrthogonalSimulator(new SimulationPlan(base.mechanisms(), base.tracks(),
+            var simulator = TestInventory.simulator(new SimulationPlan(base.mechanisms(), base.tracks(),
                     base.inputs(), base.outputs(), List.of(new GlyphSpec(type, new GridPoint(20, 20))), 2));
             observed[0] = simulator;
             simulator.run(4);
@@ -404,7 +404,7 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void outputCountRejectsIndexesOutsideEmptyAndNonemptyLists() {
-        for (var simulator : List.of(new OrthogonalSimulator(SimulationPlan.of()), completionSimulator(1))) {
+        for (var simulator : List.of(TestInventory.simulator(SimulationPlan.of()), completionSimulator(1))) {
             assertThrows(IndexOutOfBoundsException.class, () -> simulator.outputCount(-1));
             assertThrows(IndexOutOfBoundsException.class,
                     () -> simulator.outputCount(simulator.plan().outputs().size()));
@@ -426,7 +426,7 @@ class OrthogonalSimulatorLifecycleTest {
                 List.of(),
                 1);
 
-        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
+        OrthogonalSimulator simulator = TestInventory.simulator(plan);
         simulator.run(3);
 
         assertEquals(Direction.EAST, simulator.mechanism(0).direction());
@@ -439,7 +439,7 @@ class OrthogonalSimulatorLifecycleTest {
         assertEquals(1, simulator.grabsAt(new GridPoint(1, 1)));
         assertEquals(1, simulator.grabsAt(new GridPoint(1, 2)));
 
-        OrthogonalSimulator multi = new OrthogonalSimulator(new SimulationPlan(
+        OrthogonalSimulator multi = TestInventory.simulator(new SimulationPlan(
                 List.of(new StationarySpec(new GridPoint(0, 0), Direction.EAST, 1,
                         new ArmCombination(0x11), InstructionTape.once("fdr"))),
                 List.of(InputSpec.of(
@@ -476,7 +476,7 @@ class OrthogonalSimulatorLifecycleTest {
     @Test
     void grabIsNoOpWhenAlreadyHoldingAndReleaseIsNoOpWhenHoldingNothing() {
         // 重复抓取不累加共享计数，重复释放不产生负计数，并保留释放前的不可变持有快照。
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
+        OrthogonalSimulator simulator = TestInventory.simulator(new SimulationPlan(
                 List.of(new StationarySpec(new GridPoint(1, 0), Direction.WEST,
                         InstructionTape.once("rffrr"))),
                 List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())),
@@ -512,7 +512,7 @@ class OrthogonalSimulatorLifecycleTest {
                         new StationarySpec(new GridPoint(1, 0), Direction.WEST, ArmCombination.DEFAULT,
                                 InstructionTape.once("fr"))),
                 List.of(InputSpec.single(new GridPoint(0, 0), atom)), List.of(), 1);
-        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
+        OrthogonalSimulator simulator = TestInventory.simulator(plan);
         simulator.init();
         simulator.step();
         long entity = simulator.entityAt(new GridPoint(0, 0));
@@ -533,7 +533,7 @@ class OrthogonalSimulatorLifecycleTest {
     void partialMultiArmGrabStillReportsSharedGrabbingAndDoesNotRequireEveryPoint() {
         // 多臂机构只有一个抓点命中原子时也进入 grabbing 状态，空抓点不产生虚拟实体或额外计数。
         ArmCombination combination = new ArmCombination(0x03);
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
+        OrthogonalSimulator simulator = TestInventory.simulator(new SimulationPlan(
                 List.of(new StationarySpec(new GridPoint(0, 0), Direction.EAST, 1,
                         combination, InstructionTape.once("f."))),
                 List.of(InputSpec.single(new GridPoint(1, 0), sampleAtom())), List.of(), 1));
@@ -551,7 +551,7 @@ class OrthogonalSimulatorLifecycleTest {
     void nonEmptySharedGrabDoesNotSupplementAnotherArmAfterRotation() {
         // 用两个合法单原子输入分别提供正交点与旋转后的对角点；重复 f 不能为已抓握机构补抓另一分支。
         ArmCombination combination = new ArmCombination(0x11);
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
+        OrthogonalSimulator simulator = TestInventory.simulator(new SimulationPlan(
                 List.of(new StationarySpec(new GridPoint(0, 0), Direction.EAST, 1,
                         combination, InstructionTape.once("fdf"))),
                 List.of(InputSpec.single(new GridPoint(1, 0), sampleAtom()),
@@ -580,7 +580,7 @@ class OrthogonalSimulatorLifecycleTest {
                         new StationarySpec(new GridPoint(1, 0), Direction.WEST, 1,
                                 combination, InstructionTape.once("fdd"))),
                 List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())), List.of(), 1);
-        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
+        OrthogonalSimulator simulator = TestInventory.simulator(plan);
         simulator.init();
         simulator.step();
         long entity = simulator.entityAt(new GridPoint(0, 0));
@@ -616,7 +616,7 @@ class OrthogonalSimulatorLifecycleTest {
                 List.of(),
                 1);
 
-        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
+        OrthogonalSimulator simulator = TestInventory.simulator(plan);
         simulator.run(3);
 
         assertTrue(simulator.isHalted());
@@ -639,7 +639,7 @@ class OrthogonalSimulatorLifecycleTest {
                 List.of(),
                 1);
 
-        OrthogonalSimulator simulator = new OrthogonalSimulator(plan);
+        OrthogonalSimulator simulator = TestInventory.simulator(plan);
         simulator.run(4);
         assertTrue(simulator.isHalted());
         long haltedCycle = simulator.cycle();
@@ -669,7 +669,7 @@ class OrthogonalSimulatorLifecycleTest {
 
     @Test
     void boardQueriesReflectTheAtomicState() {
-        OrthogonalSimulator simulator = new OrthogonalSimulator(new SimulationPlan(
+        OrthogonalSimulator simulator = TestInventory.simulator(new SimulationPlan(
                 List.of(),
                 List.of(InputSpec.single(new GridPoint(0, 0), sampleAtom())),
                 List.of(),
@@ -706,7 +706,7 @@ class OrthogonalSimulatorLifecycleTest {
                 List.of(OutputSpec.of(
                         AtomPlacement.of(-2, 0, outputAtoms.get(0)),
                         AtomPlacement.of(-1, 0, outputAtoms.get(1)))), 1);
-        return new OrthogonalSimulator(plan);
+        return TestInventory.simulator(plan);
     }
 
     private static SimulationPlan shuttlePlan(long target, List<GlyphSpec> glyphs) {
@@ -717,7 +717,7 @@ class OrthogonalSimulatorLifecycleTest {
     }
 
     private static OrthogonalSimulator completionSimulator(long target) {
-        return new OrthogonalSimulator(new SimulationPlan(
+        return TestInventory.simulator(new SimulationPlan(
                 List.of(mechanism(0, 1, Direction.NORTH, ".fgrt"),
                         mechanism(5, 6, Direction.NORTH, "..fgrt")),
                 List.of(track(0, 1, 1, 1), track(5, 6, 6, 6)),
